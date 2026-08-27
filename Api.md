@@ -79,3 +79,88 @@ InviteCode
 - expiresAt
 - createdAt
 - usedAt
+
+---
+
+# API contract (English)
+
+This document is the frontend/backend contract. Swagger comes later, after the register API is stable.
+Database is MySQL, to be connected on the server later. Current phase: get account registration working.
+Frontend stack: Vue 3 + Vite + TypeScript (see `备忘录.md`).
+
+Conventions:
+- JSON fields use camelCase (`inviteCode`, not `invite_code`)
+- DTO = request body from frontend to backend
+- return = data from backend to frontend
+- Password appears only in requests; never include it in any response
+
+Product model: multi-user, one private room per user, sharing one server disk. Each user has a root folder (room). `User.documentId` points to that user's `Document`.
+
+---
+
+## Current phase: register
+
+*register*
+path: POST /api/user/register
+DTO: String name; String password; String inviteCode
+return: boolean
+
+Notes:
+- `true` = registration succeeded
+- `false` = registration failed (username taken / invite code invalid or already used / empty fields, etc.)
+- Invite codes are issued by an admin; one code per person; a used code cannot be reused
+- On success, the backend also creates that user's room (one Document whose path is the user's root directory)
+
+Request example:
+```json
+{
+  "name": "alice",
+  "password": "********",
+  "inviteCode": "K7M2Q9"
+}
+```
+
+Success: `true`
+Failure: `false`
+
+Frontend in this phase: register page (username, password, invite code) → call the endpoint above → show success or failure from the boolean.
+Out of scope this phase: login/auth, file list, invite-code admin UI, Swagger.
+
+For live backend integration, MySQL must contain an unused invite code (manual insert is fine). Otherwise the frontend cannot test real registration.
+
+---
+
+## Next phase (written here, not implemented now)
+
+*login*
+path: POST /api/user/login
+DTO: String name; String password
+return: to be decided in the next phase (register can keep using boolean; login must include the current user identity and cannot return boolean only)
+
+After login we will need: current user `userId / name / role`, entering the user's own room, and admin invite-code issuance.
+
+---
+
+## Register-phase backend tables (for field alignment; frontend does not query tables directly)
+
+User
+- userId
+- name
+- password (hashed in DB, never returned to the frontend)
+- role (ADMIN / USER; users created via invite code are USER)
+- isDelete
+- documentId (root folder of this user's room)
+
+Document
+- documentId
+- path (this user's root path on the server disk)
+
+InviteCode
+- code (string)
+- createdBy
+- usedBy
+- status (UNUSED / USED / REVOKED)
+- expiresAt
+- createdAt
+- usedAt
+
