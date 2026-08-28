@@ -5,7 +5,7 @@ import com.zuantou.pojo.dto.CreatInviteCodeDTO;
 import com.zuantou.pojo.dto.LoginDTO;
 import com.zuantou.pojo.dto.RegisterDTO;
 import com.zuantou.pojo.vo.CreatInviteCodeVO;
-import com.zuantou.pojo.vo.UserVO;
+import com.zuantou.pojo.vo.LoginVO;
 import com.zuantou.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -26,7 +26,7 @@ public class UserController {
         this.userService = userService;
     }
 
-    @GetMapping("getUsersName")
+    @GetMapping("/getUsersName")
     @Operation(summary = "check_user_name")
     public Result<Set<String>> selectUserNames(){
         return userService.selectUserNames();
@@ -40,12 +40,12 @@ public class UserController {
 
     @PostMapping("/register")
     @Operation(summary = "register")
-    public Result<UserVO> register(RegisterDTO registerDTO){
+    public Result<LoginVO> register(RegisterDTO registerDTO){
         return userService.register(registerDTO);
     }
 
     @PostMapping("/login")
-    public Result<UserVO> login(LoginDTO loginDTO){
+    public Result<LoginVO> login(LoginDTO loginDTO){
         return userService.login(loginDTO);
     }
 }

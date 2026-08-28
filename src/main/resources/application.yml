@@ -1,10 +1,12 @@
+host: 127.0.0.1
+
 server:
   port: 8080
 spring:
   application:
     name: claude_Speicher
   datasource:
-    url: jdbc:mysql://localhost:3306/Cloud_Speicher?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://${host}/Cloud_Speicher?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: root
     password: "0317"
@@ -14,3 +16,13 @@ mybatis-plus:
   type-aliases-package: com.example.demo.entity
   configuration:
     map-underscore-to-camel-case: true
+
+mein:
+  val:
+    file:
+      path: "../documents"
+      publicPath: "../documents/public"
+
+    signKey: "reisen"
+    expire: 30 #Tage
+    url: ${host}

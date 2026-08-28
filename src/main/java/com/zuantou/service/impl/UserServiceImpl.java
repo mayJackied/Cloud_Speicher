@@ -1,5 +1,6 @@
 package com.zuantou.service.impl;
 
+import com.zuantou.Utils.JwtUtils;
 import com.zuantou.mapper.InviteCodeMapper;
 import com.zuantou.mapper.UserMapper;
 import com.zuantou.pojo.InviteCode;
@@ -9,21 +10,19 @@ import com.zuantou.pojo.dto.CreatInviteCodeDTO;
 import com.zuantou.pojo.dto.LoginDTO;
 import com.zuantou.pojo.dto.RegisterDTO;
 import com.zuantou.pojo.vo.CreatInviteCodeVO;
-import com.zuantou.pojo.vo.UserVO;
+import com.zuantou.pojo.vo.LoginVO;
 import com.zuantou.service.UserService;
 import org.springframework.beans.BeanUtils;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 public class UserServiceImpl implements UserService {
     final UserMapper userMapper;
     final InviteCodeMapper inviteCodeMapper;
+    final JwtUtils jwtUtils;
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
@@ -35,7 +34,7 @@ public class UserServiceImpl implements UserService {
             userNames.add(user.getName());
         }
 
-        return new Result<>(1, null, userNames);
+        return Result.success(userNames);
     }
 
     @Override
@@ -45,14 +44,14 @@ public class UserServiceImpl implements UserService {
             String inviteCode = UUID.randomUUID().toString();
             inviteCodeMapper.insert(new InviteCode(inviteCode, false));
 
-            return new Result<>(1, null, new CreatInviteCodeVO(inviteCode));
+            return Result.success(new CreatInviteCodeVO(inviteCode));
         }
 
-        return new Result<>(0, "您不是管理员", null);
+        return Result.error("您不是管理员");
     }
 
     @Override
-    public Result<UserVO> register(RegisterDTO registerDTO) {
+    public Result<LoginVO> register(RegisterDTO registerDTO) {
 
         for (InviteCode inviteCode : inviteCodeMapper.selectList(null)) {
             if (!inviteCode.isDelete() && inviteCode.getInviteCode().equals(registerDTO.getInviteCode())) {
@@ -62,30 +61,34 @@ public class UserServiceImpl implements UserService {
                 inviteCode.setDelete(true);
                 inviteCodeMapper.updateById(inviteCode);
 
-                UserVO userVO = new UserVO();
-                BeanUtils.copyProperties(u, userVO);
+                LoginVO loginVO = new LoginVO();
+                BeanUtils.copyProperties(u, loginVO);
 
-                return new Result<>(1, null, userVO);
+                loginVO.setToken(jwtUtils.generateJwt(Map.of("id", loginVO.getUserId())));
+                return Result.success(loginVO);
             }
         }
-        return new Result<>(0, "无效的邀请码", null);
+        return Result.error("无效的邀请码");
     }
 
     @Override
-    public Result<UserVO> login(LoginDTO loginDTO) {
+    public Result<LoginVO> login(LoginDTO loginDTO) {
         User u = userMapper.selectByNameUser(loginDTO.getName());
         if (u != null && passwordEncoder.matches(loginDTO.getPassword(), u.getPassword())) {
-            UserVO userVO = new UserVO();
-            BeanUtils.copyProperties(u, userVO);
+            LoginVO loginVO = new LoginVO();
+            BeanUtils.copyProperties(u, loginVO);
 
-            return new Result<>(1, null, userVO);
+
+            loginVO.setToken(jwtUtils.generateJwt(Map.of("id", loginVO.getUserId())));
+            return Result.success(loginVO);
         }
-        return new Result<>(0, "用户名或密码不正确", null);
+        return Result.error("用户名或密码不正确");
     }
 
 
-    public UserServiceImpl(UserMapper userMapper, InviteCodeMapper inviteCodeMapper) {
+    public UserServiceImpl(UserMapper userMapper, InviteCodeMapper inviteCodeMapper, JwtUtils jwtUtils) {
         this.userMapper = userMapper;
         this.inviteCodeMapper = inviteCodeMapper;
+        this.jwtUtils = jwtUtils;
     }
 }

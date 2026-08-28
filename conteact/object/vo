@@ -1,5 +1,5 @@
 Result result { Integer code; String msg; T data; }
 
-UserVO userVO { Integer user_id; String name; boolean is_delete; Integer document_id; boolean isAdmin}
+LoginVO loginVO { String token Integer user_id; String name; boolean isAdmin}
 
 CreatInviteCodeVO { String inviteCode }
