@@ -1,0 +1,1 @@
+User user { Integer user_id; String password; String name; boolean is_delete; Integer document_id; boolean isAdmin}
