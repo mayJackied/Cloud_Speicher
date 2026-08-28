@@ -42,6 +42,11 @@ if (import.meta.env.DEV) {
       name: 'dev-smoke',
       component: () => import('@/views/dev/SmokeCheck.vue'),
     },
+    {
+      path: '/dev/hasher',
+      name: 'dev-hasher',
+      component: () => import('@/views/dev/HasherCheck.vue'),
+    },
   )
 }
 

@@ -1,28 +1,28 @@
-import init, { hash_chunk } from '../../../wasm-hasher/pkg/wasm_hasher.js';
-
 export interface ChunkManifestItem {
-  index: number;
-  hash: string;
-  size: number;
+  index: number
+  hash: string
+  size: number
+}
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', bytes)
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
 export async function processFileInChunks(
   file: File,
-  chunkSize: number = 4 * 1024 * 1024
+  chunkSize = 4 * 1024 * 1024,
 ): Promise<ChunkManifestItem[]> {
-  await init();
-  const manifest: ChunkManifestItem[] = [];
-  let index = 0;
+  const manifest: ChunkManifestItem[] = []
+  let index = 0
 
   for (let offset = 0; offset < file.size; offset += chunkSize) {
-    const slice = file.slice(offset, offset + chunkSize);
-    const arrayBuffer = await slice.arrayBuffer();
-    const bytes = new Uint8Array(arrayBuffer);
-    const hash = hash_chunk(bytes);
-
-    manifest.push({ index, hash, size: slice.size });
-    index++;
+    const slice = file.slice(offset, offset + chunkSize)
+    const arrayBuffer = await slice.arrayBuffer()
+    const hash = await sha256Hex(new Uint8Array(arrayBuffer))
+    manifest.push({ index, hash, size: slice.size })
+    index += 1
   }
 
-  return manifest;
+  return manifest
 }

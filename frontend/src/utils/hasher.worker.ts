@@ -1,17 +1,10 @@
-import init, { hash_chunk } from '../../../wasm-hasher/pkg/wasm_hasher.js';
-
-// 1. Initialize WASM once when worker starts
-const wasmReady = init();
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', bytes)
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
 
 self.onmessage = async (event: MessageEvent<{ chunk: ArrayBuffer; index: number }>) => {
-  await wasmReady;
-
-  const { chunk, index } = event.data;
-  const bytes = new Uint8Array(chunk);
-
-  // 2. Compute hash off the main thread
-  const hash = hash_chunk(bytes);
-
-  // 3. Send results back to main thread
-  self.postMessage({ index, hash, size: chunk.byteLength });
-};
+  const { chunk, index } = event.data
+  const hash = await sha256Hex(new Uint8Array(chunk))
+  self.postMessage({ index, hash, size: chunk.byteLength })
+}
