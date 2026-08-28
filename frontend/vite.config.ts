@@ -5,9 +5,19 @@ import { defineConfig, type Plugin } from 'vite'
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = []
-    req.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+    const chunks: Uint8Array[] = []
+    req.on('data', (chunk: Uint8Array) => chunks.push(chunk))
+    req.on('end', () => {
+      // Decode raw stream chunks without relying on Node's Buffer global
+      const totalLength = chunks.reduce((acc, c) => acc + c.length, 0)
+      const merged = new Uint8Array(totalLength)
+      let offset = 0
+      for (const chunk of chunks) {
+        merged.set(chunk, offset)
+        offset += chunk.length
+      }
+      resolve(new TextDecoder().decode(merged))
+    })
     req.on('error', reject)
   })
 }
@@ -37,7 +47,7 @@ function mockRegisterPlugin(): Plugin {
             password = body.password ?? ''
             inviteCode = body.inviteCode?.trim() ?? ''
           } catch {
-            /* 非法 JSON → false */
+            /* Invalid JSON */
           }
           const ok = Boolean(name && password && inviteCode && inviteCode !== 'fail')
           res.setHeader('Content-Type', 'application/json')
@@ -57,5 +67,8 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    fs: {
+      allow: ['..'] // Grants Vite access to read ../wasm-hasher/pkg
+    }
   },
 })
