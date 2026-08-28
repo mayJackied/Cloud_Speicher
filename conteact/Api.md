@@ -10,7 +10,6 @@ no JWT
 
 *creat_invite_code*
 post: /api/user/creatInviteCode
-DTO: CreatInviteCodeDTO
 VO: <CreatInviteCodeVO>
 
 *register*

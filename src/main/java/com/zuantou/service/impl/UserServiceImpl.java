@@ -1,12 +1,12 @@
 package com.zuantou.service.impl;
 
 import com.zuantou.Utils.JwtUtils;
+import com.zuantou.Utils.UserContext;
 import com.zuantou.mapper.InviteCodeMapper;
 import com.zuantou.mapper.UserMapper;
 import com.zuantou.pojo.InviteCode;
 import com.zuantou.pojo.Result;
 import com.zuantou.pojo.User;
-import com.zuantou.pojo.dto.CreatInviteCodeDTO;
 import com.zuantou.pojo.dto.LoginDTO;
 import com.zuantou.pojo.dto.RegisterDTO;
 import com.zuantou.pojo.vo.CreatInviteCodeVO;
@@ -38,8 +38,8 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public Result<CreatInviteCodeVO> creatInviteCode(CreatInviteCodeDTO creatDTO) {
-        User user = userMapper.selectById(creatDTO.getUserId());
+    public Result<CreatInviteCodeVO> creatInviteCode() {
+        User user = userMapper.selectById(UserContext.getUserId());
         if (user.isAdmin() && !user.isDelete()) {
             String inviteCode = UUID.randomUUID().toString();
             inviteCodeMapper.insert(new InviteCode(inviteCode, false));
@@ -64,7 +64,7 @@ public class UserServiceImpl implements UserService {
                 LoginVO loginVO = new LoginVO();
                 BeanUtils.copyProperties(u, loginVO);
 
-                loginVO.setToken(jwtUtils.generateJwt(Map.of("id", loginVO.getUserId())));
+                loginVO.setToken(jwtUtils.generateJwt(Map.of("user_id", loginVO.getUserId())));
                 return Result.success(loginVO);
             }
         }

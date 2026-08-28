@@ -1,7 +1,7 @@
 package com.zuantou.controller;
 
+import com.zuantou.Utils.UserContext;
 import com.zuantou.pojo.Result;
-import com.zuantou.pojo.dto.CreatInviteCodeDTO;
 import com.zuantou.pojo.dto.LoginDTO;
 import com.zuantou.pojo.dto.RegisterDTO;
 import com.zuantou.pojo.vo.CreatInviteCodeVO;
@@ -34,8 +34,10 @@ public class UserController {
 
     @PostMapping("/creatInviteCode")
     @Operation(summary = "creat_invite_code")
-    public Result<CreatInviteCodeVO> creatInviteCode(CreatInviteCodeDTO creatDTO){
-        return userService.creatInviteCode(creatDTO);
+    public Result<CreatInviteCodeVO> creatInviteCode(){
+        Result<CreatInviteCodeVO> result = userService.creatInviteCode();
+        UserContext.clear();
+        return result;
     }
 
     @PostMapping("/register")
