@@ -37,7 +37,6 @@ build/
 ### Mac OS ###
 .DS_Store
 
-<<<<<<< HEAD
 ### Node / Vue 3 / Vite / TypeScript ###
 node_modules/
 dist/
@@ -63,10 +62,6 @@ lerna-debug.log*
 
 # 本地前端目标与进度（不上传）
 前端开发.md
-=======
-# Added by cargo
 
-/target
-
-#/target
->>>>>>> 741d752 (feat(core): setup Rust WASM engine for SHA-256 chunk hashing)
+# 后端分支本地检出（不随前端上传）
+backend/

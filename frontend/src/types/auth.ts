@@ -4,6 +4,10 @@ export interface RegisterDTO {
   inviteCode: string
 }
 
-export type RegisterResult = boolean
+export interface LoginDTO {
+  name: string
+  password: string
+}
 
-export const REGISTER_CONTRACT_KEYS = ['name', 'password', 'inviteCode'] as const
+export const REGISTER_DTO_KEYS = ['name', 'password', 'inviteCode'] as const
+export const LOGIN_DTO_KEYS = ['name', 'password'] as const

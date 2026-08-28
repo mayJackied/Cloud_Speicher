@@ -1,5 +1,5 @@
 import { fileURLToPath, URL } from 'node:url'
-import type { IncomingMessage } from 'node:http'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import vue from '@vitejs/plugin-vue'
 import { defineConfig, type Plugin } from 'vite'
 
@@ -22,36 +22,106 @@ function readBody(req: IncomingMessage): Promise<string> {
   })
 }
 
-function mockRegisterPlugin(): Plugin {
+function sendJson(res: ServerResponse, body: unknown, status = 200) {
+  res.statusCode = status
+  res.setHeader('Content-Type', 'application/json')
+  res.end(JSON.stringify(body))
+}
+
+function loginVo(name: string, isAdmin = false) {
   return {
-    name: 'mock-register-api',
+    token: 'mock-token',
+    userId: isAdmin ? 1 : 2,
+    name,
+    isAdmin,
+  }
+}
+
+function mockApiPlugin(): Plugin {
+  return {
+    name: 'mock-api',
     apply: 'serve',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        const url = req.url?.split('?')[0]
-        if (req.method !== 'POST' || url !== '/api/user/register') {
+        if (String(req.headers['x-api-mode'] ?? '') === 'online') {
           next()
           return
         }
+        const url = req.url?.split('?')[0] ?? ''
+        if (!url.startsWith('/api/user/')) {
+          next()
+          return
+        }
+
+        if (req.method === 'GET' && url === '/api/user/getUsersName') {
+          sendJson(res, { code: 1, msg: null, data: ['alice', 'admin'] })
+          return
+        }
+
+        if (req.method !== 'POST') {
+          next()
+          return
+        }
+
         void readBody(req).then((raw) => {
-          let name = ''
-          let password = ''
-          let inviteCode = ''
+          let parsed: Record<string, unknown> = {}
           try {
-            const body = JSON.parse(raw) as {
-              name?: string
-              password?: string
-              inviteCode?: string
-            }
-            name = body.name?.trim() ?? ''
-            password = body.password ?? ''
-            inviteCode = body.inviteCode?.trim() ?? ''
+            parsed = JSON.parse(raw) as Record<string, unknown>
           } catch {
-            /* Invalid JSON */
+            sendJson(res, { code: 0, msg: '请求体不是 JSON', data: null }, 400)
+            return
           }
-          const ok = Boolean(name && password && inviteCode && inviteCode !== 'fail')
-          res.setHeader('Content-Type', 'application/json')
-          res.end(JSON.stringify(ok))
+
+          if (url === '/api/user/register') {
+            const name = String(parsed.name ?? '').trim()
+            const password = String(parsed.password ?? '')
+            const inviteCode = String(parsed.inviteCode ?? '').trim()
+            if (name === 'alice' || name === 'admin') {
+              sendJson(res, { code: 0, msg: '用户名已存在', data: null }, 409)
+              return
+            }
+            if (!name || !password || !inviteCode || inviteCode === 'fail') {
+              sendJson(res, { code: 0, msg: '无效的邀请码', data: null }, 400)
+              return
+            }
+            sendJson(res, { code: 1, msg: null, data: loginVo(name) })
+            return
+          }
+
+          if (url === '/api/user/login') {
+            const name = String(parsed.name ?? '').trim()
+            const password = String(parsed.password ?? '')
+            if (!name || !password) {
+              sendJson(res, { code: 0, msg: '用户名或密码不正确', data: null }, 400)
+              return
+            }
+            sendJson(res, {
+              code: 1,
+              msg: null,
+              data: loginVo(name, name === 'admin'),
+            })
+            return
+          }
+
+          if (url === '/api/user/creatInviteCode') {
+            const token = String(req.headers.token ?? '')
+            if (!token) {
+              sendJson(res, { code: 0, msg: 'NOT_LOGIN', data: null })
+              return
+            }
+            if (String(parsed.name ?? '') !== 'admin') {
+              sendJson(res, { code: 0, msg: '您不是管理员', data: null })
+              return
+            }
+            sendJson(res, {
+              code: 1,
+              msg: null,
+              data: { inviteCode: 'mock-invite-code' },
+            })
+            return
+          }
+
+          next()
         })
       })
     },
@@ -59,7 +129,7 @@ function mockRegisterPlugin(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [vue(), mockRegisterPlugin()],
+  plugins: [vue(), mockApiPlugin()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -68,7 +138,13 @@ export default defineConfig({
   server: {
     port: 5173,
     fs: {
-      allow: ['..'] // Grants Vite access to read ../wasm-hasher/pkg
-    }
+      allow: ['..'],
+    },
+    proxy: {
+      '/api': {
+        target: 'http://8.130.215.175:8080',
+        changeOrigin: true,
+      },
+    },
   },
 })
