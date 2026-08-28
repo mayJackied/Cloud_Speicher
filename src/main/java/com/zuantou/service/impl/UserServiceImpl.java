@@ -1,7 +1,7 @@
 package com.zuantou.service.impl;
 
-import com.zuantou.Utils.JwtUtils;
-import com.zuantou.Utils.UserContext;
+import com.zuantou.utils.JwtUtils;
+import com.zuantou.utils.UserContext;
 import com.zuantou.mapper.InviteCodeMapper;
 import com.zuantou.mapper.UserMapper;
 import com.zuantou.pojo.InviteCode;
@@ -79,7 +79,7 @@ public class UserServiceImpl implements UserService {
             BeanUtils.copyProperties(u, loginVO);
 
 
-            loginVO.setToken(jwtUtils.generateJwt(Map.of("id", loginVO.getUserId())));
+            loginVO.setToken(jwtUtils.generateJwt(Map.of("user_id", loginVO.getUserId())));
             return Result.success(loginVO);
         }
         return Result.error("用户名或密码不正确");

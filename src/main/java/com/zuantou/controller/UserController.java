@@ -1,6 +1,5 @@
 package com.zuantou.controller;
 
-import com.zuantou.Utils.UserContext;
 import com.zuantou.pojo.Result;
 import com.zuantou.pojo.dto.LoginDTO;
 import com.zuantou.pojo.dto.RegisterDTO;
@@ -9,10 +8,7 @@ import com.zuantou.pojo.vo.LoginVO;
 import com.zuantou.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.Set;
 
@@ -28,16 +24,14 @@ public class UserController {
 
     @GetMapping("/getUsersName")
     @Operation(summary = "check_user_name")
-    public Result<Set<String>> selectUserNames(){
+    public Result<Set<String>> getUsersName(){
         return userService.selectUserNames();
     }
 
-    @PostMapping("/creatInviteCode")
+    @GetMapping("/creatInviteCode")
     @Operation(summary = "creat_invite_code")
     public Result<CreatInviteCodeVO> creatInviteCode(){
-        Result<CreatInviteCodeVO> result = userService.creatInviteCode();
-        UserContext.clear();
-        return result;
+        return userService.creatInviteCode();
     }
 
     @PostMapping("/register")

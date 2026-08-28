@@ -9,7 +9,7 @@ VO: <Set<String> user_names>
 no JWT
 
 *creat_invite_code*
-post: /api/user/creatInviteCode
+get: /api/user/creatInviteCode
 VO: <CreatInviteCodeVO>
 
 *register*
@@ -28,8 +28,8 @@ no JWT
 
 File {
 
-*get_public_documents*
-get:
-
+*get_files*
+get: /api/file/getFiles
+VO: <List<MyFile> myFiles>
 
 }

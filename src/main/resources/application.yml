@@ -20,8 +20,8 @@ mybatis-plus:
 mein:
   val:
     file:
-      path: "../documents"
-      publicPath: "../documents/public"
+      path: "../files"
+      publicPath: "../files/public"
 
     signKey: "reisen"
     expire: 30 #Tage

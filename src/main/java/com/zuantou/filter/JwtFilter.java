@@ -1,8 +1,8 @@
 package com.zuantou.filter;
 
 import com.alibaba.fastjson.JSONObject;
-import com.zuantou.Utils.JwtUtils;
-import com.zuantou.Utils.UserContext;
+import com.zuantou.utils.JwtUtils;
+import com.zuantou.utils.UserContext;
 import com.zuantou.pojo.Result;
 import jakarta.servlet.*;
 import jakarta.servlet.annotation.WebFilter;
@@ -46,6 +46,8 @@ public class JwtFilter implements Filter {
         }
 
         filterChain.doFilter(servletRequest, servletResponse);
+
+        UserContext.clear();
     }
 
 }
