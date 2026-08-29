@@ -1,4 +1,4 @@
-package com.zuantou.utils;
+package com.zuantou.common.utils;
 
 public class UserContext {
     private static final ThreadLocal<Integer> USER_ID = new ThreadLocal<>();

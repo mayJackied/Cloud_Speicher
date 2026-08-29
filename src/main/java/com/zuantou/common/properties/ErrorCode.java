@@ -1,4 +1,4 @@
-package com.zuantou.config;
+package com.zuantou.common.properties;
 
 public final class ErrorCode {
     public static final Integer EXCEPTION = 99999;
@@ -20,4 +20,5 @@ public final class ErrorCode {
     public static final Integer NO_PERMISSION = 20001;
     public static final Integer FILE_OPERATION_FAILED = 20002;
     public static final Integer FILE_NAME_ILLEGAL = 20003;
+    public static final Integer FILE_NOT_FOUND = 20004;
 }

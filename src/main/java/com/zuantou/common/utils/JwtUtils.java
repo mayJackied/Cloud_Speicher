@@ -1,6 +1,6 @@
-package com.zuantou.utils;
+package com.zuantou.common.utils;
 
-import com.zuantou.config.MyValProperties;
+import com.zuantou.common.properties.MyValProperties;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;

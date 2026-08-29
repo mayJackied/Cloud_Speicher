@@ -1,4 +1,4 @@
-package com.zuantou.utils;
+package com.zuantou.common.utils;
 
 import com.zuantou.pojo.vo.FilesVO;
 

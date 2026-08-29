@@ -10,6 +10,10 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: root
     password: "0317"
+  servlet:
+    multipart:
+      max-file-size: 10GB
+      max-request-size: 10GB
 
 mybatis-plus:
   mapper-locations: classpath:/mapper/*.xml

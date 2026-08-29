@@ -1,19 +1,22 @@
 package com.zuantou.service;
 
 import com.zuantou.pojo.Result;
-import com.zuantou.pojo.dto.DeleteFileDTO;
-import com.zuantou.pojo.dto.FileDTO;
-import com.zuantou.pojo.dto.RenameFileDTO;
+import com.zuantou.pojo.dto.*;
 import com.zuantou.pojo.vo.FilesVO;
+import jakarta.servlet.http.HttpServletResponse;
 
 import java.util.List;
 
 public interface FileService {
     Result<List<FilesVO>> getFiles();
 
-    Result<Void> addFile(FileDTO fileDTO);
+    Result<Void> addFile(AddFileDTO fileDTO);
 
     Result<Void> deleteFile(DeleteFileDTO deleteFileDTO);
 
     Result<Void> renameFile(RenameFileDTO renameFileDTO);
+
+    Result<Void> uploadFile(UploadFileDTO uploadFileDTO);
+
+    void downloadFile(DownloadFileDTO downloadFileDTO, HttpServletResponse response);
 }

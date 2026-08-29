@@ -20,8 +20,9 @@
 | 10012 | DELETE_USER_FAILED           | 删除用户失败                    |       
 |       |                              |                           |
 |       |                              |                           |
-| 20001 | NO_PERMISSION                | 您没有权限                     |       
+| 20001 | NO_PERMISSION                | 您没有权限操作此文件                |       
 | 20002 | FILE_OPERATION_FAILED        | 文件操作失败                    |
 | 20003 | FILE_NAME_ILLEGAL            | 文件名不合法                    |
+| 20004 | FILE_NOT_FOUND               | 文件不存在                     |
 
 

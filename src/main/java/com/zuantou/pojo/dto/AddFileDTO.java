@@ -8,7 +8,7 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class FileDTO {
+public class AddFileDTO {
     @JsonProperty("is_file")
     private boolean file;
 

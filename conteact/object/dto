@@ -12,4 +12,8 @@ FileDTO {boolean isFile; String path}
 
 DeleteFileDTO {String path}
 
-RenameFileDTO {String path; String new_name}
+RenameFileDTO {String path; String new_name} Tipp: new_name darf nicht leer sein, und darf nicht "." oder "..", darf "/" or "\\" nicht enthalten.
+
+UploadFileDTO { String path; MultipartFile file }
+
+DownloadFileDTO { String path }

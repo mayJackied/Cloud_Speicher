@@ -1,11 +1,11 @@
 package com.zuantou.service.impl;
 
-import com.zuantou.config.ErrorCode;
-import com.zuantou.config.MyValFileProperties;
+import com.zuantou.common.properties.ErrorCode;
+import com.zuantou.common.properties.MyValFileProperties;
 import com.zuantou.pojo.dto.CheckUserNameDTO;
 import com.zuantou.pojo.vo.CheckUserNameVO;
-import com.zuantou.utils.JwtUtils;
-import com.zuantou.utils.UserContext;
+import com.zuantou.common.utils.JwtUtils;
+import com.zuantou.common.utils.UserContext;
 import com.zuantou.mapper.InviteCodeMapper;
 import com.zuantou.mapper.UserMapper;
 import com.zuantou.pojo.InviteCode;

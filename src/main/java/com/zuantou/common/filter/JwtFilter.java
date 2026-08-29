@@ -1,9 +1,9 @@
-package com.zuantou.filter;
+package com.zuantou.common.filter;
 
 import com.alibaba.fastjson.JSONObject;
-import com.zuantou.config.ErrorCode;
-import com.zuantou.utils.JwtUtils;
-import com.zuantou.utils.UserContext;
+import com.zuantou.common.properties.ErrorCode;
+import com.zuantou.common.utils.JwtUtils;
+import com.zuantou.common.utils.UserContext;
 import com.zuantou.pojo.Result;
 import jakarta.servlet.*;
 import jakarta.servlet.annotation.WebFilter;

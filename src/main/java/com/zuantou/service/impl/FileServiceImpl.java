@@ -1,20 +1,24 @@
 package com.zuantou.service.impl;
 
-import com.zuantou.config.ErrorCode;
+import com.zuantou.common.exception.BusinessException;
+import com.zuantou.common.properties.ErrorCode;
 import com.zuantou.mapper.UserMapper;
-import com.zuantou.pojo.dto.DeleteFileDTO;
-import com.zuantou.pojo.dto.FileDTO;
-import com.zuantou.pojo.dto.RenameFileDTO;
-import com.zuantou.utils.UserContext;
-import com.zuantou.config.MyValFileProperties;
+import com.zuantou.pojo.User;
+import com.zuantou.pojo.dto.*;
+import com.zuantou.common.utils.UserContext;
+import com.zuantou.common.properties.MyValFileProperties;
 import com.zuantou.pojo.Result;
 import com.zuantou.pojo.vo.FilesVO;
 import com.zuantou.service.FileService;
-import com.zuantou.utils.Util;
+import com.zuantou.common.utils.Util;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -23,9 +27,8 @@ import java.util.List;
 
 @Service
 public class FileServiceImpl implements FileService {
-    final private MyValFileProperties fileProperties;
-    final private UserMapper userMapper;
-
+    private final MyValFileProperties fileProperties;
+    private final UserMapper userMapper;
 
     @Override
     public Result<List<FilesVO>> getFiles() {
@@ -38,9 +41,14 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
-    public Result<Void> addFile(FileDTO fileDTO) {
-        File file = new File(fileDTO.getPath());
-        if (fileDTO.isFile()) {
+    public Result<Void> addFile(AddFileDTO addFileDTO) {
+        Integer errorCode = checkFilePermission(addFileDTO.getPath());
+        if (errorCode != null) {
+            return Result.error(errorCode);
+        }
+
+        File file = new File(addFileDTO.getPath());
+        if (addFileDTO.isFile()) {
             try {
                 file.createNewFile();
                 return Result.success();
@@ -58,8 +66,9 @@ public class FileServiceImpl implements FileService {
 
     @Override
     public Result<Void> deleteFile(DeleteFileDTO deleteFileDTO) {
-        if (!hasFilePermission(deleteFileDTO.getPath())) {
-            return Result.error(ErrorCode.NO_PERMISSION);
+        Integer errorCode = checkFilePermission(deleteFileDTO.getPath());
+        if (errorCode != null) {
+            return Result.error(errorCode);
         }
 
         File file = new File(deleteFileDTO.getPath());
@@ -72,42 +81,129 @@ public class FileServiceImpl implements FileService {
 
     @Override
     public Result<Void> renameFile(RenameFileDTO renameFileDTO) {
-        if (!hasFilePermission(renameFileDTO.getPath())) {
-            return Result.error(ErrorCode.NO_PERMISSION);
+        if (renameFileDTO.getNewName() == null || renameFileDTO.getNewName().isBlank() || renameFileDTO.getNewName().equals(".") || renameFileDTO.getNewName().equals("..") || renameFileDTO.getNewName().contains("/") || renameFileDTO.getNewName().contains("\\")) {
+            return Result.error(ErrorCode.FILE_NAME_ILLEGAL);
         }
-        if (renameFileDTO.getNewName() != null
-                && !renameFileDTO.getNewName().isBlank()
-                && !renameFileDTO.getNewName().equals(".")
-                && !renameFileDTO.getNewName().equals("..")
-                && !renameFileDTO.getNewName().contains("/")
-                && !renameFileDTO.getNewName().contains("\\")) {
-            File oldFile = new File(renameFileDTO.getPath());
-            File newFile = new File(oldFile.getParentFile(), renameFileDTO.getNewName());
-            if (!oldFile.renameTo(newFile)) {
-                return Result.error(ErrorCode.FILE_OPERATION_FAILED);
-            }
-            return Result.success();
+
+        Integer errorCode = checkFilePermission(renameFileDTO.getPath());
+        if (errorCode != null) {
+            return Result.error(errorCode);
         }
-        return Result.error(ErrorCode.FILE_NAME_ILLEGAL);
+
+        File oldFile = new File(renameFileDTO.getPath());
+        File newFile = new File(oldFile.getParentFile(), renameFileDTO.getNewName());
+        if (!oldFile.renameTo(newFile)) {
+            return Result.error(ErrorCode.FILE_OPERATION_FAILED);
+        }
+        return Result.success();
     }
 
-    private boolean hasFilePermission(String path){
+    @Override
+    public Result<Void> uploadFile(UploadFileDTO uploadFileDTO) {
+        Integer errorCode = checkFilePermission(uploadFileDTO.getPath());
+        if (errorCode != null) {
+            return Result.error(errorCode);
+        }
+
+        MultipartFile multipartFile = uploadFileDTO.getFile();
+
+        if (multipartFile == null || multipartFile.isEmpty()) {
+            return Result.error(ErrorCode.FILE_OPERATION_FAILED);
+        }
+
+        String fileName = multipartFile.getOriginalFilename();
+
+        if (fileName == null || fileName.isBlank()) {
+            return Result.error(ErrorCode.FILE_NAME_ILLEGAL);
+        }
+
+
+        File file = new File(uploadFileDTO.getPath(), fileName);
+        try {
+            file.createNewFile();
+        } catch (IOException e) {
+            return Result.error(ErrorCode.EXCEPTION);
+        }
+
+        Path target = Paths.get(
+                fileProperties.getPath(),
+                UserContext.getUserId().toString(),
+                fileName
+        ).toAbsolutePath().normalize();
+
+        try {
+            multipartFile.transferTo(target.toFile());
+        } catch (IOException e) {
+            return Result.error(ErrorCode.FILE_OPERATION_FAILED);
+        }
+
+
+        return Result.success();
+    }
+
+    @Override
+    public void downloadFile(DownloadFileDTO downloadFileDTO, HttpServletResponse response) {
+        Integer errorCode = checkFilePermission(downloadFileDTO.getPath());
+
+        if (errorCode != null) {
+            throw new BusinessException(errorCode);
+        }
+
+        File file = new File(downloadFileDTO.getPath());
+
+        if (!file.exists() || !file.isFile()) {
+            throw new BusinessException(ErrorCode.FILE_NOT_FOUND);
+        }
+
+        response.setContentType("application/octet-stream");
+
+        response.setHeader(
+                "Content-Disposition",
+                "attachment; filename=\"" + file.getName() + "\""
+        );
+
+        try (
+                FileInputStream inputStream = new FileInputStream(file);
+
+                OutputStream outputStream = response.getOutputStream()
+        ) {
+
+            byte[] buffer = new byte[8192];
+
+            int length;
+
+            while ((length = inputStream.read(buffer)) != -1) {
+                outputStream.write(buffer, 0, length);
+            }
+
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private Integer checkFilePermission(String path) {
         Path target = Paths.get(path).toAbsolutePath().normalize();
         Path publicPath = Paths.get(fileProperties.getPublicPath()).toAbsolutePath().normalize();
         Path userPath = Paths.get(fileProperties.getPath(), UserContext.getUserId().toString()).toAbsolutePath().normalize();
 
-        boolean admin = userMapper.selectById(UserContext.getUserId()).isAdmin();
+        User user = userMapper.selectById(UserContext.getUserId());
+        if (user == null){
+            return ErrorCode.USER_NOT_FOUND;
+        }
+        boolean admin = user.isAdmin();
 
-        if (!target.startsWith(userPath) && !target.startsWith(publicPath)){
-            return false;
+        if (!target.startsWith(userPath) && !target.startsWith(publicPath)) {
+            return ErrorCode.NO_PERMISSION;
         }
 
-        return !target.startsWith(publicPath) || admin;
+        if (target.startsWith(userPath) || admin) {
+            return null;
+        }
+        return ErrorCode.NO_PERMISSION;
     }
 
     public FileServiceImpl(MyValFileProperties fileProperties, UserMapper userMapper) {
         this.fileProperties = fileProperties;
         this.userMapper = userMapper;
     }
-
 }
