@@ -1,8 +1,6 @@
 package com.zuantou.pojo;
 
-import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -16,7 +14,10 @@ public class User {
     private Integer userId;
     private String password;
     private String name;
-    private boolean isDelete;
+    @TableLogic
+    @TableField("is_deleted")
+    private boolean deleted;
     private Integer documentId;
-    private boolean isAdmin;
+    @TableField("is_admin")
+    private boolean admin;
 }
