@@ -9,5 +9,5 @@ import org.apache.ibatis.annotations.Select;
 @Mapper
 public interface UserMapper extends BaseMapper<User> {
     @Select("select * from user WHERE name = #{name}")
-    User selectByNameUser(String name);
+    User selectByUserName(String name);
 }

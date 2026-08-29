@@ -1,3 +1,5 @@
+CheckUserNameDTO { String name }
+
 RegisterDTO {String name; String password; Integer invite_code}
 
 LoginDTO {String name; String password}

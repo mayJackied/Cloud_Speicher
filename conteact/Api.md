@@ -4,8 +4,9 @@
 User {
 
 *check_user_name*
-get: /api/user/getUsersName
-VO: <Set<String> user_names>
+get: /api/user/checkUserName
+DTO: CheckUserNameDTO checkUserNameDTO
+VO: <CheckUserNameVO checkUserNameVO>
 no JWT
 
 *creat_invite_code*

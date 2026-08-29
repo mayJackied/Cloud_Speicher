@@ -1,5 +1,7 @@
 package com.zuantou.service.impl;
 
+import com.zuantou.pojo.dto.CheckUserNameDTO;
+import com.zuantou.pojo.vo.CheckUserNameVO;
 import com.zuantou.utils.JwtUtils;
 import com.zuantou.utils.UserContext;
 import com.zuantou.mapper.InviteCodeMapper;
@@ -27,14 +29,11 @@ public class UserServiceImpl implements UserService {
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     @Override
-    public Result<Set<String>> selectUserNames() {
-        List<User> users = userMapper.selectList(null);
-        Set<String> userNames = new HashSet<>();
-        for (User user : users) {
-            userNames.add(user.getName());
+    public Result<CheckUserNameVO> checkUserName(CheckUserNameDTO checkUserNameDTO) {
+        if (userMapper.selectByUserName(checkUserNameDTO.getName()) == null) {
+            return Result.success(new CheckUserNameVO(true));
         }
-
-        return Result.success(userNames);
+        return Result.success(new CheckUserNameVO(false));
     }
 
     @Override
@@ -73,7 +72,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public Result<LoginVO> login(LoginDTO loginDTO) {
-        User u = userMapper.selectByNameUser(loginDTO.getName());
+        User u = userMapper.selectByUserName(loginDTO.getName());
         if (u != null && passwordEncoder.matches(loginDTO.getPassword(), u.getPassword())) {
             LoginVO loginVO = new LoginVO();
             BeanUtils.copyProperties(u, loginVO);

@@ -1,5 +1,7 @@
 Result result { Integer code; String msg; T data; }
 
+CheckUserNameVO { boolean isAvailable }
+
 LoginVO loginVO { String token Integer user_id; String name; boolean isAdmin}
 
 CreatInviteCodeVO { String inviteCode }
