@@ -1,13 +1,12 @@
 package com.zuantou.controller;
 
 import com.zuantou.pojo.Result;
-import com.zuantou.pojo.vo.MyFile;
+import com.zuantou.pojo.dto.FileDTO;
+import com.zuantou.pojo.vo.FilesVO;
 import com.zuantou.service.FileService;
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
@@ -20,8 +19,14 @@ public class FileController {
 
 
     @GetMapping("/getFiles")
-    public Result<List<MyFile>> getFiles(){
+    public Result<List<FilesVO>> getFiles(){
         return fileService.getFiles();
+    }
+
+    @PostMapping("/addFile")
+    @Operation(summary = "add_file")
+    public Result<Void> addFile(@RequestBody FileDTO fileDTO){
+        return fileService.addFile(fileDTO);
     }
 
 

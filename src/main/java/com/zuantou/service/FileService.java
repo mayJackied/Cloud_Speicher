@@ -1,10 +1,13 @@
 package com.zuantou.service;
 
 import com.zuantou.pojo.Result;
-import com.zuantou.pojo.vo.MyFile;
+import com.zuantou.pojo.dto.FileDTO;
+import com.zuantou.pojo.vo.FilesVO;
 
 import java.util.List;
 
 public interface FileService {
-    Result<List<MyFile>> getFiles();
+    Result<List<FilesVO>> getFiles();
+
+    Result<Void> addFile(FileDTO fileDTO);
 }

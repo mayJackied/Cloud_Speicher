@@ -6,4 +6,4 @@ LoginVO loginVO { String token Integer user_id; String name; boolean isAdmin}
 
 CreatInviteCodeVO { String inviteCode }
 
-MyFile { List <MyFile> my_files; String file_name; Long length; Long last_modified; boolean is_file }
+FilesVO { List <FilesVO> filesVOS; String file_name; Long length; Long last_modified; boolean is_file }

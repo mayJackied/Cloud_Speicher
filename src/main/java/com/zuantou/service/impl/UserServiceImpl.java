@@ -51,6 +51,37 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public Result<LoginVO> register(RegisterDTO registerDTO) {
+        String name = registerDTO.getName();
+        if (name == null || name.isBlank()) {
+            return Result.error("用户名不能为空");
+        }
+
+        if (name.length() < 3 || name.length() > 20) {
+            return Result.error("用户名长度必须为3-20位");
+        }
+
+        if (!name.matches("^[A-Za-z][A-Za-z0-9_]*$")) {
+            return Result.error("用户名必须以字母开头，且只能包含字母、数字和下划线");
+        }
+
+        String password = registerDTO.getPassword();
+        if (password == null || password.isBlank()) {
+            return Result.error("密码不能为空");
+        }
+
+        if (password.length() < 8 || password.length() > 64) {
+            return Result.error("密码长度必须为8-64位");
+        }
+
+        if (!password.matches("^(?=.*[A-Za-z])(?=.*\\d)[A-Za-z\\d]+$")) {
+            return Result.error("密码必须同时包含字母和数字，且只能包含字母和数字");
+        }
+
+        String inviteCodeValue = registerDTO.getInviteCode();
+        if (inviteCodeValue == null || inviteCodeValue.isBlank()) {
+            return Result.error("邀请码不能为空");
+        }
+
 
         for (InviteCode inviteCode : inviteCodeMapper.selectList(null)) {
             if (!inviteCode.isDelete() && inviteCode.getInviteCode().equals(registerDTO.getInviteCode())) {

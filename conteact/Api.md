@@ -6,23 +6,23 @@ User {
 *check_user_name*
 get: /api/user/checkUserName
 DTO: CheckUserNameDTO checkUserNameDTO
-VO: <CheckUserNameVO checkUserNameVO>
+VO: Result<CheckUserNameVO checkUserNameVO>
 no JWT
 
 *creat_invite_code*
 get: /api/user/creatInviteCode
-VO: <CreatInviteCodeVO>
+VO: Result<CreatInviteCodeVO>
 
 *register*
 post: /api/user/register
 DTO: RegisterDTO
-VO: <LoginVO loginVO >
+VO: Result<LoginVO loginVO >
 no JWT
 
 *login*
 post: /api/user/login
 DTO: LoginDTO loginDTO
-VO: <LoginVO loginVO >
+VO: Result<LoginVO loginVO >
 no JWT
 
 }
@@ -31,6 +31,11 @@ File {
 
 *get_files*
 get: /api/file/getFiles
-VO: <List<MyFile> myFiles>
+VO: <List<MyFile> filesVOS>
+
+*add_file*
+post: /api/file/addFile
+DTO: FileDTO fileDTO
+VO Result<Void>
 
 }

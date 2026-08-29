@@ -3,3 +3,9 @@ CheckUserNameDTO { String name }
 RegisterDTO {String name; String password; Integer invite_code}
 
 LoginDTO {String name; String password}
+
+/**
+ * 从相对路径的最底层文件开始
+ * z.B. "../files/public/document/a.txt"
+ */
+FileDTO {boolean isFile; String path}

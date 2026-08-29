@@ -25,7 +25,7 @@ public class UserController {
 
     @PostMapping("/checkUserName")
     @Operation(summary = "check_user_name")
-    public Result<CheckUserNameVO> checkUserName(CheckUserNameDTO checkUserNameDTO){
+    public Result<CheckUserNameVO> checkUserName(@RequestBody CheckUserNameDTO checkUserNameDTO){
         return userService.checkUserName(checkUserNameDTO);
     }
 
@@ -37,12 +37,12 @@ public class UserController {
 
     @PostMapping("/register")
     @Operation(summary = "register")
-    public Result<LoginVO> register(RegisterDTO registerDTO){
+    public Result<LoginVO> register(@RequestBody RegisterDTO registerDTO){
         return userService.register(registerDTO);
     }
 
     @PostMapping("/login")
-    public Result<LoginVO> login(LoginDTO loginDTO){
+    public Result<LoginVO> login(@RequestBody LoginDTO loginDTO){
         return userService.login(loginDTO);
     }
 }
