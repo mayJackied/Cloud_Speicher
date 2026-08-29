@@ -1,6 +1,7 @@
 package com.zuantou.filter;
 
 import com.alibaba.fastjson.JSONObject;
+import com.zuantou.config.ErrorCode;
 import com.zuantou.utils.JwtUtils;
 import com.zuantou.utils.UserContext;
 import com.zuantou.pojo.Result;
@@ -33,14 +34,14 @@ public class JwtFilter implements Filter {
 
         String jwt = request.getHeader("token");
         if (jwt == null || jwt.isEmpty()){
-            String notLogin = JSONObject.toJSONString(Result.error("NOT_LOGIN"));
+            String notLogin = JSONObject.toJSONString(Result.error(ErrorCode.NOT_LOGIN));
             response.getWriter().write(notLogin);
         }
 
         try {
             UserContext.setUserId(Integer.valueOf(jwtUtils.parseJWT(jwt).get("user_id").toString()));
         } catch (Exception e){
-            String notLogin = JSONObject.toJSONString(Result.error("NOT_LOGIN"));
+            String notLogin = JSONObject.toJSONString(Result.error(ErrorCode.NOT_LOGIN));
             response.getWriter().write(notLogin);
             return;
         }

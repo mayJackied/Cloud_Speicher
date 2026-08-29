@@ -21,12 +21,12 @@ mybatis-plus:
       logic-delete-value: 1
       logic-not-delete-value: 0
 
-mein:
+my:
   val:
     file:
       path: "../files"
       publicPath: "../files/public"
 
     signKey: "reisen"
-    expire: 30 #Tage
+    expire: 30 #Days
     url: ${host}

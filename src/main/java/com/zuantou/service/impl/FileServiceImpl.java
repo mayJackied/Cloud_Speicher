@@ -1,8 +1,11 @@
 package com.zuantou.service.impl;
 
+import com.zuantou.config.ErrorCode;
+import com.zuantou.mapper.UserMapper;
+import com.zuantou.pojo.dto.DeleteFileDTO;
 import com.zuantou.pojo.dto.FileDTO;
 import com.zuantou.utils.UserContext;
-import com.zuantou.config.MeinValFileProperties;
+import com.zuantou.config.MyValFileProperties;
 import com.zuantou.pojo.Result;
 import com.zuantou.pojo.vo.FilesVO;
 import com.zuantou.service.FileService;
@@ -17,7 +20,8 @@ import java.util.List;
 
 @Service
 public class FileServiceImpl implements FileService {
-    final private MeinValFileProperties fileProperties;
+    final private MyValFileProperties fileProperties;
+    final private UserMapper userMapper;
 
 
     @Override
@@ -38,19 +42,34 @@ public class FileServiceImpl implements FileService {
                 file.createNewFile();
                 return Result.success();
             } catch (IOException e) {
-                return Result.error(e.toString());
+                return Result.error(ErrorCode.EXCEPTION);
             }
         }
         try {
             file.mkdir();
             return Result.success();
         } catch (Exception e) {
-            return Result.error(e.toString());
+            return Result.error(ErrorCode.EXCEPTION);
         }
     }
 
-    public FileServiceImpl(MeinValFileProperties fileProperties) {
+    @Override
+    public Result<Void> deleteFile(DeleteFileDTO deleteFileDTO) {
+        if (deleteFileDTO.getPath().startsWith(fileProperties.getPublicPath()) && !userMapper.selectById(UserContext.getUserId()).isAdmin()) {
+            return Result.error(ErrorCode.NO_PERMISSION);
+        }
+        if (!deleteFileDTO.getPath().startsWith(fileProperties.getPath()+"/"+UserContext.getUserId())){
+            return Result.error(ErrorCode.NO_PERMISSION);
+        }
+        File file = new File(deleteFileDTO.getPath());
+        file.delete();
+
+        return Result.success();
+    }
+
+    public FileServiceImpl(MyValFileProperties fileProperties, UserMapper userMapper) {
         this.fileProperties = fileProperties;
+        this.userMapper = userMapper;
     }
 
 }

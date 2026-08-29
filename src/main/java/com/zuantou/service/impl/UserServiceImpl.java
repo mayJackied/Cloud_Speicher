@@ -1,5 +1,7 @@
 package com.zuantou.service.impl;
 
+import com.zuantou.config.ErrorCode;
+import com.zuantou.config.MyValFileProperties;
 import com.zuantou.pojo.dto.CheckUserNameDTO;
 import com.zuantou.pojo.vo.CheckUserNameVO;
 import com.zuantou.utils.JwtUtils;
@@ -18,6 +20,7 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.io.File;
 import java.util.*;
 
 @Service
@@ -25,6 +28,7 @@ public class UserServiceImpl implements UserService {
     final UserMapper userMapper;
     final InviteCodeMapper inviteCodeMapper;
     final JwtUtils jwtUtils;
+    final MyValFileProperties fileProperties;
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
@@ -40,7 +44,7 @@ public class UserServiceImpl implements UserService {
     public Result<CreatInviteCodeVO> creatInviteCode() {
         User user = userMapper.selectById(UserContext.getUserId());
         if (user == null){
-            return Result.error("没有此账号");
+            return Result.error(ErrorCode.USER_NOT_FOUND);
         }
 
         if (user.isAdmin()) {
@@ -50,46 +54,46 @@ public class UserServiceImpl implements UserService {
             return Result.success(new CreatInviteCodeVO(inviteCode));
         }
 
-        return Result.error("您不是管理员");
+        return Result.error(ErrorCode.NOT_ADMIN);
     }
 
     @Override
     public Result<LoginVO> register(RegisterDTO registerDTO) {
         String name = registerDTO.getName();
         if (name == null || name.isBlank()) {
-            return Result.error("用户名不能为空");
+            return Result.error(ErrorCode.USERNAME_EMPTY);
         }
 
         if (name.length() < 3 || name.length() > 20) {
-            return Result.error("用户名长度必须为3-20位");
+            return Result.error(ErrorCode.USERNAME_LENGTH_INVALID );
         }
 
         if (!name.matches("^[A-Za-z][A-Za-z0-9_]*$")) {
-            return Result.error("用户名必须以字母开头，且只能包含字母、数字和下划线");
+            return Result.error(ErrorCode.USERNAME_FORMAT_INVALID);
         }
 
         String password = registerDTO.getPassword();
         if (password == null || password.isBlank()) {
-            return Result.error("密码不能为空");
+            return Result.error(ErrorCode.PASSWORD_EMPTY);
         }
 
         if (password.length() < 8 || password.length() > 64) {
-            return Result.error("密码长度必须为8-64位");
+            return Result.error(ErrorCode.PASSWORD_LENGTH_INVALID);
         }
 
         if (!password.matches("^(?=.*[A-Za-z])(?=.*\\d)[A-Za-z\\d]+$")) {
-            return Result.error("密码必须同时包含字母和数字，且只能包含字母和数字");
+            return Result.error(ErrorCode.PASSWORD_FORMAT_INVALID);
         }
 
         String inviteCodeValue = registerDTO.getInviteCode();
         if (inviteCodeValue == null || inviteCodeValue.isBlank()) {
-            return Result.error("邀请码不能为空");
+            return Result.error(ErrorCode.INVITE_CODE_EMPTY);
         }
 
 
         for (InviteCode inviteCode : inviteCodeMapper.selectList(null)) {
             if (inviteCode.getInviteCode().equals(registerDTO.getInviteCode())) {
-                User u = new User(null, passwordEncoder.encode(registerDTO.getPassword()),registerDTO.getName(), false, null, false);
+                User u = new User(null, passwordEncoder.encode(registerDTO.getPassword()),registerDTO.getName(), false, false);
                 userMapper.insert(u);
 
                 inviteCodeMapper.deleteById(inviteCode.getInviteCode());
@@ -98,17 +102,21 @@ public class UserServiceImpl implements UserService {
                 BeanUtils.copyProperties(u, loginVO);
 
                 loginVO.setToken(jwtUtils.generateJwt(Map.of("user_id", loginVO.getUserId())));
+
+                File file = new File(fileProperties.getPath()+"/"+u.getUserId());
+                file.mkdir();
+
                 return Result.success(loginVO);
             }
         }
-        return Result.error("无效的邀请码");
+        return Result.error(ErrorCode.INVITE_CODE_INVALID);
     }
 
     @Override
     public Result<LoginVO> login(LoginDTO loginDTO) {
         User u = userMapper.selectByUserName(loginDTO.getName());
         if (u == null){
-            return Result.error("用户不存在");
+            return Result.error(ErrorCode.USER_NOT_FOUND);
         }
         if (passwordEncoder.matches(loginDTO.getPassword(), u.getPassword())) {
             LoginVO loginVO = new LoginVO();
@@ -118,7 +126,7 @@ public class UserServiceImpl implements UserService {
             loginVO.setToken(jwtUtils.generateJwt(Map.of("user_id", loginVO.getUserId())));
             return Result.success(loginVO);
         }
-        return Result.error("用户名或密码不正确");
+        return Result.error(ErrorCode.USERNAME_OR_PASSWORD_INVALID);
     }
 
     @Override
@@ -126,13 +134,14 @@ public class UserServiceImpl implements UserService {
         if ((userMapper.deleteById(UserContext.getUserId())) == 1) {
             return Result.success();
         }
-        return Result.error("删除失败");
+        return Result.error(ErrorCode.DELETE_USER_FAILED);
     }
 
 
-    public UserServiceImpl(UserMapper userMapper, InviteCodeMapper inviteCodeMapper, JwtUtils jwtUtils) {
+    public UserServiceImpl(UserMapper userMapper, InviteCodeMapper inviteCodeMapper, JwtUtils jwtUtils, MyValFileProperties myValFileProperties) {
         this.userMapper = userMapper;
         this.inviteCodeMapper = inviteCodeMapper;
         this.jwtUtils = jwtUtils;
+        this.fileProperties = myValFileProperties;
     }
 }

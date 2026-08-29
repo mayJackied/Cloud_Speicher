@@ -16,6 +16,5 @@ public class User {
     private String name;
     @TableLogic
     private boolean isDeleted;
-    private Integer documentId;
     private boolean isAdmin;
 }

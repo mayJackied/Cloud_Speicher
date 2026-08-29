@@ -1,6 +1,6 @@
 package com.zuantou.utils;
 
-import com.zuantou.config.MeinValProperties;
+import com.zuantou.config.MyValProperties;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
@@ -13,7 +13,7 @@ import java.util.Map;
 @Component
 public class JwtUtils {
 
-    final MeinValProperties properties;
+    final MyValProperties properties;
 
     public String generateJwt(Map<String, Object> claims) {
 
@@ -43,7 +43,7 @@ public class JwtUtils {
                 .getBody();
     }
 
-    public JwtUtils(MeinValProperties properties) {
+    public JwtUtils(MyValProperties properties) {
         this.properties = properties;
     }
 }
