@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { ErrorCode } from '@/types/errorCode'
 import type { LoginVO } from '@/types/login'
 
 export const SESSION_KEY = 'loginVO'
@@ -9,7 +10,7 @@ export const api = axios.create({
   timeout: 25000,
 })
 
-const NO_JWT = ['/user/login', '/user/register', '/user/getUsersName']
+const NO_JWT = ['/user/login', '/user/register', '/user/checkUserName']
 
 function isNoJwtUrl(url: string): boolean {
   return NO_JWT.some((path) => url.includes(path))
@@ -32,8 +33,8 @@ function isNotLogin(data: unknown): boolean {
   return Boolean(
     data &&
       typeof data === 'object' &&
-      'msg' in data &&
-      (data as { msg?: string }).msg === 'NOT_LOGIN',
+      'code' in data &&
+      (data as { code?: number }).code === ErrorCode.NOT_LOGIN,
   )
 }
 
@@ -47,6 +48,9 @@ function kickToLogin() {
 }
 
 api.interceptors.request.use((config) => {
+  if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+    delete config.headers['Content-Type']
+  }
   const url = config.url ?? ''
   const token = readToken()
   if (!isNoJwtUrl(url) && token) {

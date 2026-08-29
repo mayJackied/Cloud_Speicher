@@ -1,7 +1,7 @@
 import { api } from './client'
-import type { CreatInviteCodeDTO, CreatInviteCodeVO } from '@/types/invite'
+import type { CreatInviteCodeVO } from '@/types/invite'
 import type { Result } from '@/types/result'
 
-export function creatInviteCode(dto: CreatInviteCodeDTO) {
-  return api.post<Result<CreatInviteCodeVO>>('/user/creatInviteCode', dto)
+export function creatInviteCode() {
+  return api.get<Result<CreatInviteCodeVO>>('/user/creatInviteCode')
 }

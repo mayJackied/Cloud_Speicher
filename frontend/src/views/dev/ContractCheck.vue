@@ -22,8 +22,8 @@
     <p>失败 → {{ failText }}</p>
 
     <h2>4. 打接口</h2>
-    <p>离线走 mock；在线经 Vite 转到 8.130.215.175:8080。login / register / getUsersName 不带 JWT；发邀请码带请求头 token。</p>
-    <p>当前会话：{{ sessionText }}。发码成功路径：用户名填 admin，先探测 login，再点 creatInviteCode。非管理员应得到「您不是管理员」（形状正确的失败）。</p>
+    <p>离线走 mock；在线经 Vite 转到 8.130.215.175:8080。login / register / checkUserName 不带 JWT；发邀请码 GET，只带头 token（用户 id 在 JWT 里）。</p>
+    <p>当前会话：{{ sessionText }}。发码成功路径：用户名填 admin，先探测 login，再点 creatInviteCode。非管理员应得到 code=10002。</p>
     <p>
       <label>用户名 <input v-model="name" /></label>
     </p>
@@ -49,7 +49,7 @@ import { login, register } from '@/api/auth'
 import { creatInviteCode } from '@/api/invitations'
 import { useApiMode } from '@/composables/useApiMode'
 import { useAuthStore } from '@/stores/auth'
-import { AuthMsg } from '@/types/authStatus'
+import { ErrorCode } from '@/types/errorCode'
 import {
   describeResult,
   describeTransportError,
@@ -159,11 +159,8 @@ async function probeInvite() {
   loading.value = true
   probeText.value = '请求中…'
   try {
-    const { data } = await creatInviteCode({
-      userId: auth.user.userId,
-      name: auth.user.name,
-    })
-    if (isResultShape(data) && data.code === 0 && data.msg === AuthMsg.NOT_ADMIN) {
+    const { data } = await creatInviteCode()
+    if (isResultShape(data) && data.code === ErrorCode.NOT_ADMIN) {
       probeText.value = `非管理员发码失败用例通过。${describeResult(data, 'none')}。成功路径：用户名改成 admin，先探测 login 再发码。`
     } else {
       probeText.value = describeResult(data, 'none')

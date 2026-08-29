@@ -16,7 +16,7 @@ import { isAxiosError } from 'axios'
 import { creatInviteCode } from '@/api/invitations'
 import { isResultShape } from '@/dev/contract'
 import { useAuthStore } from '@/stores/auth'
-import { AuthMsg, ResultCode } from '@/types/authStatus'
+import { ErrorCode, messageForCode } from '@/types/errorCode'
 import type { CreatInviteCodeVO } from '@/types/invite'
 
 const auth = useAuthStore()
@@ -31,15 +31,12 @@ async function onCreate() {
   loading.value = true
   message.value = ''
   try {
-    const { data } = await creatInviteCode({
-      userId: auth.user.userId,
-      name: auth.user.name,
-    })
+    const { data } = await creatInviteCode()
     if (!isResultShape(data)) {
       message.value = '返回不是 Result'
       return
     }
-    if (data.code === ResultCode.OK) {
+    if (data.code === ErrorCode.OK) {
       const vo = data.data as CreatInviteCodeVO | null
       if (vo?.inviteCode) {
         code.value = vo.inviteCode
@@ -47,10 +44,10 @@ async function onCreate() {
         return
       }
     }
-    message.value = data.msg || AuthMsg.NOT_ADMIN
+    message.value = messageForCode(data.code)
   } catch (error) {
     if (isAxiosError(error) && error.response && isResultShape(error.response.data)) {
-      message.value = error.response.data.msg || AuthMsg.NOT_ADMIN
+      message.value = messageForCode(error.response.data.code)
       return
     }
     message.value = '无法连接服务器'

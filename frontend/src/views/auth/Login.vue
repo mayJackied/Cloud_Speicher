@@ -30,7 +30,7 @@ import { isAxiosError } from 'axios'
 import { login } from '@/api/auth'
 import { describeResult, isResultShape, readLoginVO } from '@/dev/contract'
 import { useAuthStore } from '@/stores/auth'
-import { AuthMsg, ResultCode } from '@/types/authStatus'
+import { ErrorCode, messageForCode } from '@/types/errorCode'
 
 const name = ref('')
 const password = ref('')
@@ -57,7 +57,7 @@ async function onSubmit() {
       message.value = describeResult(data)
       return
     }
-    if (data.code === ResultCode.OK) {
+    if (data.code === ErrorCode.OK) {
       const vo = readLoginVO(data.data)
       if (!vo) {
         message.value = describeResult(data)
@@ -67,11 +67,11 @@ async function onSubmit() {
       await router.push({ name: 'drive' })
       return
     }
-    message.value = data.msg || AuthMsg.LOGIN_BAD_CREDENTIALS
+    message.value = messageForCode(data.code)
   } catch (error) {
     if (isAxiosError(error) && error.response) {
       const body = error.response.data
-      message.value = isResultShape(body) ? body.msg || AuthMsg.LOGIN_BAD_CREDENTIALS : `登录失败（HTTP ${error.response.status}）`
+      message.value = isResultShape(body) ? messageForCode(body.code) : `登录失败（HTTP ${error.response.status}）`
       return
     }
     message.value = '无法连接服务器（离线 mock 未生效，或在线 FRP 不通）'

@@ -1,9 +1,9 @@
-export interface UserVO {
-  userId: number
+export interface CheckUserNameDTO {
   name: string
-  isDeleted: boolean
-  documentId: number | null
-  isAdmin: boolean
 }
 
-export const USER_VO_KEYS = ['userId', 'name', 'isDeleted', 'documentId', 'isAdmin'] as const
+export interface CheckUserNameVO {
+  isAvailable: boolean
+}
+
+export const CHECK_USER_NAME_DTO_KEYS = ['name'] as const

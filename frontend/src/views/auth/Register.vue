@@ -28,8 +28,8 @@ import { useRouter } from 'vue-router'
 import { isAxiosError } from 'axios'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage } from 'element-plus'
-import { getUsersName, register } from '@/api/auth'
-import { describeResult, isResultShape, readLoginVO } from '@/dev/contract'
+import { checkUserName, register } from '@/api/auth'
+import { describeResult, isResultOk, isResultShape, readCheckUserNameVO, readLoginVO } from '@/dev/contract'
 import { useAuthStore } from '@/stores/auth'
 import {
   NAME_PATTERN,
@@ -37,7 +37,7 @@ import {
   PASSWORD_PATTERN,
   PASSWORD_RULE_TEXT,
 } from '@/types/constraints'
-import { AuthMsg, ResultCode } from '@/types/authStatus'
+import { ErrorCode, messageForCode } from '@/types/errorCode'
 
 const formRef = ref<FormInstance>()
 const loading = ref(false)
@@ -90,11 +90,11 @@ async function onSubmit() {
 
   loading.value = true
   try {
-    const namesRes = await getUsersName()
-    if (isResultShape(namesRes.data) && namesRes.data.code === ResultCode.OK) {
-      const names = namesRes.data.data ?? []
-      if (names.includes(dto.name)) {
-        ElMessage.error(AuthMsg.REGISTER_NAME_TAKEN)
+    const checkRes = await checkUserName({ name: dto.name })
+    if (isResultOk(checkRes.data)) {
+      const vo = readCheckUserNameVO(checkRes.data.data)
+      if (vo && !vo.isAvailable) {
+        ElMessage.error('用户名已存在')
         return
       }
     }
@@ -104,7 +104,7 @@ async function onSubmit() {
       ElMessage.error(describeResult(data))
       return
     }
-    if (data.code === ResultCode.OK) {
+    if (data.code === ErrorCode.OK) {
       const vo = readLoginVO(data.data)
       if (!vo) {
         ElMessage.error(describeResult(data))
@@ -115,12 +115,12 @@ async function onSubmit() {
       await router.push({ name: 'drive' })
       return
     }
-    ElMessage.error(data.msg || AuthMsg.REGISTER_BAD_INVITE)
+    ElMessage.error(messageForCode(data.code))
   } catch (error) {
     if (isAxiosError(error) && error.response) {
       const body = error.response.data
       ElMessage.error(
-        isResultShape(body) ? body.msg || AuthMsg.REGISTER_BAD_INVITE : `注册失败（HTTP ${error.response.status}）`,
+        isResultShape(body) ? messageForCode(body.code) : `注册失败（HTTP ${error.response.status}）`,
       )
       return
     }

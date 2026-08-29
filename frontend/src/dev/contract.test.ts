@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { AuthMsg, ResultCode } from '@/types/authStatus'
+import { ErrorCode, messageForCode } from '@/types/errorCode'
 import {
   describeResult,
   describeTransportError,
@@ -33,15 +33,16 @@ describe('Result / DTO 契约', () => {
     expect(describeResult(body)).toMatch(/LoginVO/)
   })
 
-  it('LoginVO 兼容 conteact 的 user_id', () => {
-    const vo = readLoginVO({ token: 't', user_id: 3, name: 'bob', isAdmin: true })
+  it('LoginVO 兼容 is_admin 与 user_id', () => {
+    const vo = readLoginVO({ token: 't', user_id: 3, name: 'bob', is_admin: true })
     expect(vo).toEqual({ token: 't', userId: 3, name: 'bob', isAdmin: true })
   })
 
-  it('失败 Result code=0 带 msg', () => {
-    const body = fixtureFail('用户名或密码不正确')
+  it('失败 Result 用整数错误码、没有 msg', () => {
+    const body = fixtureFail(ErrorCode.USERNAME_OR_PASSWORD_INVALID)
     expect(isResultShape(body)).toBe(true)
-    expect(describeResult(body)).toMatch(/失败/)
+    expect(body).not.toHaveProperty('msg')
+    expect(describeResult(body)).toMatch(/用户名或密码不正确/)
   })
 
   it('旧 boolean 返回不算 Result', () => {
@@ -55,15 +56,14 @@ describe('Result / DTO 契约', () => {
     expect(describeResult(body)).toMatch(/在线未连通/)
   })
 
-  it('登录失败 msg 与状态表一致', () => {
-    const body = fixtureFail(AuthMsg.LOGIN_BAD_CREDENTIALS)
-    expect(body.code).toBe(ResultCode.FAIL)
-    expect(describeResult(body)).toMatch(/用户名或密码不正确/)
+  it('错误码对照表覆盖登录失败', () => {
+    expect(messageForCode(ErrorCode.USERNAME_OR_PASSWORD_INVALID)).toBe('用户名或密码不正确')
+    expect(fixtureFail(ErrorCode.USERNAME_OR_PASSWORD_INVALID).code).toBe(10011)
   })
 
   it('缺少 token 不算 LoginVO', () => {
     expect(readLoginVO({ userId: 1, name: 'alice', isAdmin: false })).toBeNull()
-    expect(describeResult({ code: 1, msg: null, data: { userId: 1, name: 'alice', isAdmin: false } })).toMatch(
+    expect(describeResult({ code: 1, data: { userId: 1, name: 'alice', isAdmin: false } })).toMatch(
       /不是 LoginVO/,
     )
   })

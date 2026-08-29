@@ -30,11 +30,19 @@ function sendJson(res: ServerResponse, body: unknown, status = 200) {
 
 function loginVo(name: string, isAdmin = false) {
   return {
-    token: 'mock-token',
+    token: isAdmin ? 'mock-admin-token' : 'mock-token',
     userId: isAdmin ? 1 : 2,
     name,
-    isAdmin,
+    is_admin: isAdmin,
   }
+}
+
+function ok(data: unknown) {
+  return { code: 1, data }
+}
+
+function fail(code: number) {
+  return { code, data: null }
 }
 
 function mockApiPlugin(): Plugin {
@@ -53,8 +61,17 @@ function mockApiPlugin(): Plugin {
           return
         }
 
-        if (req.method === 'GET' && url === '/api/user/getUsersName') {
-          sendJson(res, { code: 1, msg: null, data: ['alice', 'admin'] })
+        if (req.method === 'GET' && url === '/api/user/creatInviteCode') {
+          const token = String(req.headers.token ?? '')
+          if (!token) {
+            sendJson(res, fail(10000))
+            return
+          }
+          if (token !== 'mock-admin-token') {
+            sendJson(res, fail(10002))
+            return
+          }
+          sendJson(res, ok({ inviteCode: 'mock-invite-code' }))
           return
         }
 
@@ -68,7 +85,13 @@ function mockApiPlugin(): Plugin {
           try {
             parsed = JSON.parse(raw) as Record<string, unknown>
           } catch {
-            sendJson(res, { code: 0, msg: '请求体不是 JSON', data: null }, 400)
+            sendJson(res, fail(99999), 400)
+            return
+          }
+
+          if (url === '/api/user/checkUserName') {
+            const name = String(parsed.name ?? '').trim()
+            sendJson(res, ok({ is_available: name !== 'alice' && name !== 'admin' }))
             return
           }
 
@@ -76,15 +99,19 @@ function mockApiPlugin(): Plugin {
             const name = String(parsed.name ?? '').trim()
             const password = String(parsed.password ?? '')
             const inviteCode = String(parsed.inviteCode ?? '').trim()
-            if (name === 'alice' || name === 'admin') {
-              sendJson(res, { code: 0, msg: '用户名已存在', data: null }, 409)
+            if (!name) {
+              sendJson(res, fail(10003))
               return
             }
-            if (!name || !password || !inviteCode || inviteCode === 'fail') {
-              sendJson(res, { code: 0, msg: '无效的邀请码', data: null }, 400)
+            if (!password) {
+              sendJson(res, fail(10006))
               return
             }
-            sendJson(res, { code: 1, msg: null, data: loginVo(name) })
+            if (!inviteCode || inviteCode === 'fail') {
+              sendJson(res, fail(inviteCode ? 10010 : 10009))
+              return
+            }
+            sendJson(res, ok(loginVo(name)))
             return
           }
 
@@ -92,32 +119,16 @@ function mockApiPlugin(): Plugin {
             const name = String(parsed.name ?? '').trim()
             const password = String(parsed.password ?? '')
             if (!name || !password) {
-              sendJson(res, { code: 0, msg: '用户名或密码不正确', data: null }, 400)
+              sendJson(res, fail(10011))
               return
             }
-            sendJson(res, {
-              code: 1,
-              msg: null,
-              data: loginVo(name, name === 'admin'),
-            })
+            sendJson(res, ok(loginVo(name, name === 'admin')))
             return
           }
 
-          if (url === '/api/user/creatInviteCode') {
+          if (url === '/api/user/delete') {
             const token = String(req.headers.token ?? '')
-            if (!token) {
-              sendJson(res, { code: 0, msg: 'NOT_LOGIN', data: null })
-              return
-            }
-            if (String(parsed.name ?? '') !== 'admin') {
-              sendJson(res, { code: 0, msg: '您不是管理员', data: null })
-              return
-            }
-            sendJson(res, {
-              code: 1,
-              msg: null,
-              data: { inviteCode: 'mock-invite-code' },
-            })
+            sendJson(res, token ? ok(null) : fail(10000))
             return
           }
 

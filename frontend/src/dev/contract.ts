@@ -1,6 +1,8 @@
 import { LOGIN_DTO_KEYS, REGISTER_DTO_KEYS, type LoginDTO, type RegisterDTO } from '@/types/auth'
+import { ErrorCode, messageForCode } from '@/types/errorCode'
 import type { LoginVO } from '@/types/login'
 import type { Result } from '@/types/result'
+import type { CheckUserNameVO } from '@/types/user'
 
 export function extraKeys(obj: object, allowed: readonly string[]): string[] {
   return Object.keys(obj).filter((key) => !allowed.includes(key))
@@ -62,9 +64,11 @@ export function isResultShape(data: unknown): data is Result<unknown> {
   if (!row) {
     return false
   }
-  const codeOk = row.code === 0 || row.code === 1
-  const msgOk = row.msg === null || row.msg === undefined || typeof row.msg === 'string'
-  return codeOk && msgOk && 'data' in row
+  return typeof row.code === 'number' && Number.isFinite(row.code) && 'data' in row
+}
+
+export function isResultOk(data: unknown): data is Result<unknown> {
+  return isResultShape(data) && data.code === ErrorCode.OK
 }
 
 export function readLoginVO(data: unknown): LoginVO | null {
@@ -84,6 +88,18 @@ export function readLoginVO(data: unknown): LoginVO | null {
     name,
     isAdmin: readBoolean(row.isAdmin ?? row.admin ?? row.is_admin) ?? false,
   }
+}
+
+export function readCheckUserNameVO(data: unknown): CheckUserNameVO | null {
+  const row = asRecord(data)
+  if (!row) {
+    return null
+  }
+  const available = readBoolean(row.isAvailable ?? row.is_available ?? row.available)
+  if (available === null) {
+    return null
+  }
+  return { isAvailable: available }
 }
 
 export function describeTransportError(opts: {
@@ -112,27 +128,25 @@ export function describeResult(data: unknown, expectVo: 'LoginVO' | 'none' = 'Lo
     return `在线未连通（FRP/后端不可达）。${preview(data)}`
   }
   if (!isResultShape(data)) {
-    return `形状错误：期望 Result{code,msg,data}，实际：${preview(data)}`
+    return `形状错误：期望 Result{code,data}，实际：${preview(data)}`
   }
   const codePart = `code=${data.code}`
-  const msgPart = data.code === 0 ? ` msg=${data.msg ?? '（空）'}` : ''
-  if (data.code === 0) {
-    return `Result 形状正确（失败）：${codePart}${msgPart} data=${preview(data.data)}`
+  if (data.code !== ErrorCode.OK) {
+    return `Result 形状正确（失败）：${codePart} ${messageForCode(data.code)} data=${preview(data.data)}`
   }
   if (expectVo === 'LoginVO') {
     const vo = readLoginVO(data.data)
     if (!vo) {
-      return `Result 外壳正确，但 data 不是 LoginVO（需要 token, userId, name, isAdmin）。实际：${preview(data.data)}`
+      return `Result 外壳正确，但 data 不是 LoginVO（需要 token, userId, name, isAdmin/is_admin）。实际：${preview(data.data)}`
     }
     return `Result 形状正确：${codePart} LoginVO={userId:${vo.userId}, name:${vo.name}, isAdmin:${vo.isAdmin}, token:…}`
   }
-  return `Result 形状正确：${codePart}${msgPart}`
+  return `Result 形状正确：${codePart}`
 }
 
 export function fixtureSuccessLogin(name = 'alice'): Result<LoginVO> {
   return {
-    code: 1,
-    msg: null,
+    code: ErrorCode.OK,
     data: {
       token: 'mock-token',
       userId: 1,
@@ -142,8 +156,8 @@ export function fixtureSuccessLogin(name = 'alice'): Result<LoginVO> {
   }
 }
 
-export function fixtureFail(msg = '无效的邀请码'): Result<null> {
-  return { code: 0, msg, data: null }
+export function fixtureFail(code: number = ErrorCode.INVITE_CODE_INVALID): Result<null> {
+  return { code, data: null }
 }
 
 export { LOGIN_VO_KEYS } from '@/types/login'
