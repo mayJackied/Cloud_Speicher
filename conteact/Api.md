@@ -41,4 +41,14 @@ post: /api/file/addFile
 DTO: FileDTO fileDTO
 VO Result<Void>
 
+*delete_file*
+post: /api/file/deleteFile
+DTO: DeleteFileDTO deleteFileDTO
+VO: Result<Void>
+
+*rename_file*
+post: /api/file/renameFile
+DTO: RenameFileDTO renameFileDTO
+VO: Result<Void>
+
 }

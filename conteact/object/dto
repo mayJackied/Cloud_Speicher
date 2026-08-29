@@ -9,3 +9,7 @@ LoginDTO {String name; String password}
  * z.B. "../files/public/document/a.txt"
  */
 FileDTO {boolean isFile; String path}
+
+DeleteFileDTO {String path}
+
+RenameFileDTO {String path; String new_name}

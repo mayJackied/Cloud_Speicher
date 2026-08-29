@@ -3,6 +3,7 @@ package com.zuantou.service;
 import com.zuantou.pojo.Result;
 import com.zuantou.pojo.dto.DeleteFileDTO;
 import com.zuantou.pojo.dto.FileDTO;
+import com.zuantou.pojo.dto.RenameFileDTO;
 import com.zuantou.pojo.vo.FilesVO;
 
 import java.util.List;
@@ -13,4 +14,6 @@ public interface FileService {
     Result<Void> addFile(FileDTO fileDTO);
 
     Result<Void> deleteFile(DeleteFileDTO deleteFileDTO);
+
+    Result<Void> renameFile(RenameFileDTO renameFileDTO);
 }

@@ -3,6 +3,7 @@ package com.zuantou.controller;
 import com.zuantou.pojo.Result;
 import com.zuantou.pojo.dto.DeleteFileDTO;
 import com.zuantou.pojo.dto.FileDTO;
+import com.zuantou.pojo.dto.RenameFileDTO;
 import com.zuantou.pojo.vo.FilesVO;
 import com.zuantou.service.FileService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -35,6 +36,12 @@ public class FileController {
     @Operation(summary = "delete_file")
     public Result<Void> deleteFile(@RequestBody DeleteFileDTO deleteFileDTO){
         return fileService.deleteFile(deleteFileDTO);
+    }
+
+    @PostMapping("/renameFile")
+    @Operation(summary = "rename_file")
+    public Result<Void> renameFile(@RequestBody RenameFileDTO renameFileDTO){
+        return fileService.renameFile(renameFileDTO);
     }
 
 

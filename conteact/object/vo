@@ -1,4 +1,4 @@
-Result result { Integer code; String msg; T data; }
+Result result { Integer code; T data; }
 
 CheckUserNameVO { boolean isAvailable }
 
