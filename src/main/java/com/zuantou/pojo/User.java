@@ -15,9 +15,7 @@ public class User {
     private String password;
     private String name;
     @TableLogic
-    @TableField("is_deleted")
-    private boolean deleted;
+    private boolean isDeleted;
     private Integer documentId;
-    @TableField("is_admin")
-    private boolean admin;
+    private boolean isAdmin;
 }

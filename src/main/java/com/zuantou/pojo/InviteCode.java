@@ -1,6 +1,5 @@
 package com.zuantou.pojo;
 
-import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -13,9 +12,12 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @TableName("invite_code")
 public class InviteCode {
+    public InviteCode(String inviteCode){
+        this.inviteCode = inviteCode;
+    }
+
     @TableId
     private String inviteCode;
     @TableLogic
-    @TableField("is_deleted")
-    private boolean deleted;
+    private boolean isDeleted;
 }

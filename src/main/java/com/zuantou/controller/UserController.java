@@ -45,4 +45,9 @@ public class UserController {
     public Result<LoginVO> login(@RequestBody LoginDTO loginDTO){
         return userService.login(loginDTO);
     }
+
+    @PostMapping("/delete")
+    public Result<Void> delete(){
+        return userService.delete();
+    }
 }

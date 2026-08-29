@@ -25,6 +25,9 @@ DTO: LoginDTO loginDTO
 VO: Result<LoginVO loginVO >
 no JWT
 
+*delete*
+post: /api/user/delete
+VO Result<Void>
 }
 
 File {

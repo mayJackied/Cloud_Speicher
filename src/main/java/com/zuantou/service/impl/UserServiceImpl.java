@@ -39,9 +39,13 @@ public class UserServiceImpl implements UserService {
     @Override
     public Result<CreatInviteCodeVO> creatInviteCode() {
         User user = userMapper.selectById(UserContext.getUserId());
-        if (user.isAdmin() && !user.isDelete()) {
+        if (user == null){
+            return Result.error("没有此账号");
+        }
+
+        if (user.isAdmin()) {
             String inviteCode = UUID.randomUUID().toString();
-            inviteCodeMapper.insert(new InviteCode(inviteCode, false));
+            inviteCodeMapper.insert(new InviteCode(inviteCode));
 
             return Result.success(new CreatInviteCodeVO(inviteCode));
         }
@@ -84,12 +88,11 @@ public class UserServiceImpl implements UserService {
 
 
         for (InviteCode inviteCode : inviteCodeMapper.selectList(null)) {
-            if (!inviteCode.isDelete() && inviteCode.getInviteCode().equals(registerDTO.getInviteCode())) {
+            if (inviteCode.getInviteCode().equals(registerDTO.getInviteCode())) {
                 User u = new User(null, passwordEncoder.encode(registerDTO.getPassword()),registerDTO.getName(), false, null, false);
                 userMapper.insert(u);
 
-                inviteCode.setDelete(true);
-                inviteCodeMapper.updateById(inviteCode);
+                inviteCodeMapper.deleteById(inviteCode.getInviteCode());
 
                 LoginVO loginVO = new LoginVO();
                 BeanUtils.copyProperties(u, loginVO);
@@ -104,7 +107,10 @@ public class UserServiceImpl implements UserService {
     @Override
     public Result<LoginVO> login(LoginDTO loginDTO) {
         User u = userMapper.selectByUserName(loginDTO.getName());
-        if (u != null && passwordEncoder.matches(loginDTO.getPassword(), u.getPassword())) {
+        if (u == null){
+            return Result.error("用户不存在");
+        }
+        if (passwordEncoder.matches(loginDTO.getPassword(), u.getPassword())) {
             LoginVO loginVO = new LoginVO();
             BeanUtils.copyProperties(u, loginVO);
 
@@ -113,6 +119,14 @@ public class UserServiceImpl implements UserService {
             return Result.success(loginVO);
         }
         return Result.error("用户名或密码不正确");
+    }
+
+    @Override
+    public Result<Void> delete() {
+        if ((userMapper.deleteById(UserContext.getUserId())) == 1) {
+            return Result.success();
+        }
+        return Result.error("删除失败");
     }
 
 

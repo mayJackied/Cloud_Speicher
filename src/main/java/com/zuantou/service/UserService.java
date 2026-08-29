@@ -17,4 +17,6 @@ public interface UserService {
     Result<LoginVO> register(RegisterDTO registerDTO);
 
     Result<LoginVO> login(LoginDTO loginDTO);
+
+    Result<Void> delete();
 }
