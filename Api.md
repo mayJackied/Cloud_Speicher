@@ -12,9 +12,9 @@ Swagger 后做。数据库 MySQL，服务器 `8.130.215.175:8080`（FRP，不一
 - JSON：多数字段驼峰；部分布尔/改名被 Java `@JsonProperty` 成蛇形，见字段表
 - 密码只出现在请求里
 - 需要登录的接口：请求头 **`token`** = `LoginVO.token`（不是 Bearer）。用户 id 从 JWT 取，**不要再在 DTO 里传 userId**
+- JWT 有效期 **30 天**。到期后接口回 `10000`，前端清会话并回登录页。**不做 refresh**（过期重新登录即可）
 - `no jwt`：`/checkUserName`、`/login`、`/register`
-- 未登录：`code = 10000`，前端清会话并回登录页
-- 没有 refresh，过期就重新登录
+- 未登录 / token 过期：`code = 10000`，前端清会话并回登录页
 - `Document` 对象已删除，不要再对接 `documentId`
 
 产品模型：多用户、单人单间、共享一块服务器硬盘。每人磁盘目录用 JWT 里的 `user_id` 定位。另有一块 public 目录，列表接口会一并返回。
@@ -57,6 +57,8 @@ HTTP 仍可能是 200 包着失败码，或 4xx/500。前端两种都读 `code`�
 | 20002 | FILE_OPERATION_FAILED | 文件操作失败 |
 | 20003 | FILE_NAME_ILLEGAL | 文件名不合法 |
 | 20004 | FILE_NOT_FOUND | 文件不存在 |
+| 20005 | FILE_ILLEGAL | 文件不符合约定 |
+| 20006 | FILE_DUPLICATE | 存在同名文件 |
 
 没有「用户名已存在」错误码。查重走 `checkUserName`，`data.is_available === false`。
 
@@ -83,7 +85,8 @@ VO: `{ is_available: boolean }`（Jackson 字段名 `is_available`）
 *register*　no jwt  
 POST `/api/user/register`  
 DTO: `{ name, password, inviteCode }`  
-VO: `LoginVO`
+VO: `LoginVO`  
+邀请码一次性：用过再注册别人 → `10010`
 
 *login*　no jwt  
 POST `/api/user/login`  
@@ -107,7 +110,7 @@ DTO: 无
 VO: `List<FilesVO>`（当前实现会返回 public 根 + 当前用户根两棵树）
 
 *add_file*　POST `/api/file/addFile`  
-DTO: `{ is_file: boolean, path }`　JSON  
+DTO: `FileDTO` `{ is_file: boolean, path }`　JSON（Java 已把 AddFileDTO 改名为 FileDTO）  
 VO: `Void`
 
 *delete_file*　POST `/api/file/deleteFile`  
@@ -128,7 +131,18 @@ DTO: `{ path }` JSON
 成功：二进制流（`Content-Disposition: attachment`），**不是 Result**  
 失败：可能走异常处理器变成 `Result` 错误码
 
-压缩包/rar：后端打算以后再做，先把上传下载和增删改查跑通。
+*zip*　POST `/api/file/zip`  
+DTO: `ZipFileDTO` `{ path, targetDir }`（驼峰；`targetDir` 必须是文件夹，空字符串 = 源文件父目录）  
+VO: `Result<Void>`
+
+*unzip*　POST `/api/file/unzip`  
+DTO: 同上 `ZipFileDTO`  
+VO: `Result<Void>`
+
+*move_file*　POST `/api/file/moveFile`  
+DTO: `MoveFileDTO` `{ path, targetDir, fileHandle }`  
+`targetDir` 禁止为空。`fileHandle`：0 默认不处理（同名则 20006）；1 替换；2 忽略（前端一般不发）  
+VO: `Result<Void>`
 
 ---
 
@@ -143,8 +157,9 @@ CreatInviteCodeVO `{ String inviteCode }`
 
 FilesVO `{ List<FilesVO> filesVOS; String fileName; Long length; Long lastModified; boolean is_file }`
 
-AddFileDTO `{ boolean is_file; String path }`  
-path 示例（后端注释）：相对路径从最底层开始，如 `../files/public/document/a.txt`
+FileDTO `{ boolean is_file; String path }`（原 AddFileDTO）  
+path 示例（后端注释）：相对路径从最底层开始，如 `../files/public/document/a.txt`  
+`getFiles` 只回每层 `fileName`，不回完整 path。前端用前缀 `../files` + 面包屑拼接后再调增删改。
 
 RenameFileDTO `{ String path; String new_name }`
 
@@ -152,14 +167,19 @@ UploadFileDTO `{ String path; MultipartFile file }`
 
 DownloadFileDTO / DeleteFileDTO `{ String path }`
 
+ZipFileDTO `{ String path; String targetDir }`
+
+MoveFileDTO `{ String path; String targetDir; Integer fileHandle }`
+
 PO User `{ userId, password, name, isDeleted, isAdmin }`（无 documentId）
 
 ---
 
 ## 前端本阶段
 
-登录/注册/发码已按 **code + data + 错误码表** 接。文件 API 类型和 `src/api/files.ts` 已铺，网盘列表 UI 仍是下一阶段。  
-离线 mock 走本地；在线经 Vite 到 FRP。
+登录/注册/发码已按 **code + data + 错误码表** 接。`/drive` 已接列表与进文件夹；自己的房间可新建/重命名/删除/上传/下载。公共目录普通用户只能下载，管理员可增删改。设置页删号。  
+离线 mock 走本地；在线经 Vite 到 FRP。  
+2026-08-30 现网探测：`checkUserName` / `register` / `login` / 非管理员发码 `10002` / `getFiles` 均 HTTP 200 且为 Result。JWT 30 天、无 refresh。
 
 ---
 
@@ -177,9 +197,9 @@ Conventions:
 - JSON is mostly camelCase; some booleans/renames are snake_case via Jackson `@JsonProperty` (see field list)
 - Password only in requests
 - Authenticated calls: header **`token`** = `LoginVO.token` (not Bearer). User id comes from the JWT; **do not send `userId` in DTOs**
+- JWT lasts **30 days**. After expiry the API returns `10000`; the frontend clears the session and returns to login. **No refresh** (just log in again)
 - `no jwt`: `/checkUserName`, `/login`, `/register`
-- Not logged in: `code = 10000`; frontend clears the session and returns to login
-- No refresh; expired token means log in again
+- Not logged in / expired token: `code = 10000`; frontend clears the session and returns to login
 - `Document` was removed; do not use `documentId`
 
 Product: multi-user, one private room per user, one shared server disk. Each user's folder is located with JWT `user_id`. A public folder is returned together with the file list.
@@ -222,6 +242,8 @@ Full table: backend `conteact/ErrorCode.md`. Common ones:
 | 20002 | FILE_OPERATION_FAILED | file operation failed |
 | 20003 | FILE_NAME_ILLEGAL | illegal file name |
 | 20004 | FILE_NOT_FOUND | file not found |
+| 20005 | FILE_ILLEGAL | file does not match the contract |
+| 20006 | FILE_DUPLICATE | duplicate file name |
 
 There is no `USERNAME_EXISTS` code. Duplicate check is `checkUserName` with `data.is_available === false`.
 
@@ -248,7 +270,8 @@ VO: `{ is_available: boolean }` (Jackson name `is_available`)
 *register*　no jwt  
 POST `/api/user/register`  
 DTO: `{ name, password, inviteCode }`  
-VO: `LoginVO`
+VO: `LoginVO`  
+Invite codes are one-shot: reuse → `10010`
 
 *login*　no jwt  
 POST `/api/user/login`  
@@ -272,7 +295,7 @@ DTO: none
 VO: `List<FilesVO>` (implementation currently returns public root + current user root)
 
 *add_file*　POST `/api/file/addFile`  
-DTO: `{ is_file: boolean, path }` JSON  
+DTO: `FileDTO` `{ is_file: boolean, path }` JSON (Java renamed AddFileDTO → FileDTO)  
 VO: `Void`
 
 *delete_file*　POST `/api/file/deleteFile`  
@@ -293,7 +316,18 @@ DTO: `{ path }` JSON
 Success: binary stream (`Content-Disposition: attachment`), **not Result**  
 Failure: may become a `Result` error via the exception handler
 
-Archives/rar: later. Upload/download and CRUD first.
+*zip*　POST `/api/file/zip`  
+DTO: `ZipFileDTO` `{ path, targetDir }` (camelCase; `targetDir` must be a folder; empty string = parent of source)  
+VO: `Result<Void>`
+
+*unzip*　POST `/api/file/unzip`  
+DTO: same `ZipFileDTO`  
+VO: `Result<Void>`
+
+*move_file*　POST `/api/file/moveFile`  
+DTO: `MoveFileDTO` `{ path, targetDir, fileHandle }`  
+`targetDir` must not be empty. `fileHandle`: 0 default / no-op (duplicate → 20006); 1 replace; 2 ignore (frontend usually does not send this)  
+VO: `Result<Void>`
 
 ---
 
@@ -308,8 +342,9 @@ CreatInviteCodeVO `{ String inviteCode }`
 
 FilesVO `{ List<FilesVO> filesVOS; String fileName; Long length; Long lastModified; boolean is_file }`
 
-AddFileDTO `{ boolean is_file; String path }`  
-Path note from backend: start from the leaf, e.g. `../files/public/document/a.txt`
+FileDTO `{ boolean is_file; String path }` (was AddFileDTO)  
+Path note from backend: start from the leaf, e.g. `../files/public/document/a.txt`  
+`getFiles` returns `fileName` per node only. The frontend joins prefix `../files` + breadcrumb before add/delete/rename.
 
 RenameFileDTO `{ String path; String new_name }`
 
@@ -317,11 +352,16 @@ UploadFileDTO `{ String path; MultipartFile file }`
 
 DownloadFileDTO / DeleteFileDTO `{ String path }`
 
+ZipFileDTO `{ String path; String targetDir }`
+
+MoveFileDTO `{ String path; String targetDir; Integer fileHandle }`
+
 PO User `{ userId, password, name, isDeleted, isAdmin }` (no `documentId`)
 
 ---
 
 ## Frontend this phase
 
-Login / register / invite codes use **code + data + error table**. File types and `src/api/files.ts` exist; drive list UI is next.  
-Offline mock locally; online via Vite → FRP.
+Login / register / invite codes use **code + data + error table**. `/drive` lists files; a user's room can mkdir / rename / delete / upload / download. Public: everyone can download; only admin can write. Settings page deletes the account.  
+Offline mock locally; online via Vite → FRP.  
+2026-08-30 live probe: `checkUserName` / `register` / `login` / non-admin invite `10002` / `getFiles` all HTTP 200 Result. JWT is 30 days; no refresh.

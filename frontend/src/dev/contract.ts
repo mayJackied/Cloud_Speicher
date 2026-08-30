@@ -59,6 +59,32 @@ function readBoolean(value: unknown): boolean | null {
   return typeof value === 'boolean' ? value : null
 }
 
+/** 登录 JSON 里 is_admin 可能是 true / 1 / "true"。 */
+export function readBoolish(value: unknown): boolean | null {
+  if (typeof value === 'boolean') {
+    return value
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (value === 1) {
+      return true
+    }
+    if (value === 0) {
+      return false
+    }
+    return null
+  }
+  if (typeof value === 'string') {
+    const n = value.trim().toLowerCase()
+    if (n === 'true' || n === '1' || n === 'yes') {
+      return true
+    }
+    if (n === 'false' || n === '0' || n === 'no') {
+      return false
+    }
+  }
+  return null
+}
+
 export function isResultShape(data: unknown): data is Result<unknown> {
   const row = asRecord(data)
   if (!row) {
@@ -86,7 +112,8 @@ export function readLoginVO(data: unknown): LoginVO | null {
     token,
     userId,
     name,
-    isAdmin: readBoolean(row.isAdmin ?? row.admin ?? row.is_admin) ?? false,
+    isAdmin:
+      readBoolish(row.isAdmin ?? row.admin ?? row.is_admin ?? row.isadmin) ?? false,
   }
 }
 

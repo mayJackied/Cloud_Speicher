@@ -20,6 +20,8 @@ export const ErrorCode = {
   FILE_OPERATION_FAILED: 20002,
   FILE_NAME_ILLEGAL: 20003,
   FILE_NOT_FOUND: 20004,
+  FILE_ILLEGAL: 20005,
+  FILE_DUPLICATE: 20006,
 } as const
 
 export type ErrorCodeValue = (typeof ErrorCode)[keyof typeof ErrorCode]
@@ -43,6 +45,8 @@ const ZH: Record<number, string> = {
   [ErrorCode.FILE_OPERATION_FAILED]: '文件操作失败',
   [ErrorCode.FILE_NAME_ILLEGAL]: '文件名不合法',
   [ErrorCode.FILE_NOT_FOUND]: '文件不存在',
+  [ErrorCode.FILE_ILLEGAL]: '文件不符合约定',
+  [ErrorCode.FILE_DUPLICATE]: '存在同名文件',
 }
 
 export function messageForCode(code: number): string {

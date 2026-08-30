@@ -49,7 +49,16 @@ function kickToLogin() {
 
 api.interceptors.request.use((config) => {
   if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
-    delete config.headers['Content-Type']
+    // 实例默认是 application/json。不删掉的话 Spring 不会按 multipart 绑 path/file，
+    // checkFilePermission 就会变成 20001 / 20004。
+    const headers = config.headers
+    if (headers && typeof headers.delete === 'function') {
+      headers.delete('Content-Type')
+      headers.delete('content-type')
+    } else if (headers) {
+      delete headers['Content-Type']
+      delete headers['content-type']
+    }
   }
   const url = config.url ?? ''
   const token = readToken()

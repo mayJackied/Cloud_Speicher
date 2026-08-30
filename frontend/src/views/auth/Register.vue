@@ -90,13 +90,17 @@ async function onSubmit() {
 
   loading.value = true
   try {
-    const checkRes = await checkUserName({ name: dto.name })
-    if (isResultOk(checkRes.data)) {
-      const vo = readCheckUserNameVO(checkRes.data.data)
-      if (vo && !vo.isAvailable) {
-        ElMessage.error('用户名已存在')
-        return
+    try {
+      const checkRes = await checkUserName({ name: dto.name })
+      if (isResultOk(checkRes.data)) {
+        const vo = readCheckUserNameVO(checkRes.data.data)
+        if (vo && !vo.isAvailable) {
+          ElMessage.error('用户名已存在')
+          return
+        }
       }
+    } catch {
+      // 查重请求失败不挡注册，由 register 自己判。
     }
 
     const { data } = await register(dto)

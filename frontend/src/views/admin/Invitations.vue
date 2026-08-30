@@ -39,14 +39,21 @@ async function onCreate() {
     if (data.code === ErrorCode.OK) {
       const vo = data.data as CreatInviteCodeVO | null
       if (vo?.inviteCode) {
+        auth.setAdmin(true)
         code.value = vo.inviteCode
         message.value = '已生成'
         return
       }
     }
+    if (data.code === ErrorCode.NOT_ADMIN) {
+      auth.setAdmin(false)
+    }
     message.value = messageForCode(data.code)
   } catch (error) {
     if (isAxiosError(error) && error.response && isResultShape(error.response.data)) {
+      if (error.response.data.code === ErrorCode.NOT_ADMIN) {
+        auth.setAdmin(false)
+      }
       message.value = messageForCode(error.response.data.code)
       return
     }

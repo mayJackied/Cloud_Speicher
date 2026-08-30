@@ -23,10 +23,21 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/drive/settings',
+    name: 'drive-settings',
+    component: () => import('@/views/drive/Settings.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/admin',
+    redirect: { name: 'admin-invitations' },
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/admin/invitations',
     name: 'admin-invitations',
     component: () => import('@/views/admin/Invitations.vue'),
-    meta: { requiresAuth: true, requiresAdmin: true },
+    meta: { requiresAuth: true },
   },
 ]
 

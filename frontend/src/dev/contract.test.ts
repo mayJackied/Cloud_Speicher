@@ -38,6 +38,16 @@ describe('Result / DTO 契约', () => {
     expect(vo).toEqual({ token: 't', userId: 3, name: 'bob', isAdmin: true })
   })
 
+  it('LoginVO 兼容 is_admin 为 1', () => {
+    const vo = readLoginVO({ token: 't', userId: 2, name: 'Plato_777', is_admin: 1 })
+    expect(vo?.isAdmin).toBe(true)
+  })
+
+  it('LoginVO 兼容 Jackson 字段 admin', () => {
+    const vo = readLoginVO({ token: 't', userId: 2, name: 'Plato_777', admin: true })
+    expect(vo?.isAdmin).toBe(true)
+  })
+
   it('失败 Result 用整数错误码、没有 msg', () => {
     const body = fixtureFail(ErrorCode.USERNAME_OR_PASSWORD_INVALID)
     expect(isResultShape(body)).toBe(true)
@@ -59,6 +69,11 @@ describe('Result / DTO 契约', () => {
   it('错误码对照表覆盖登录失败', () => {
     expect(messageForCode(ErrorCode.USERNAME_OR_PASSWORD_INVALID)).toBe('用户名或密码不正确')
     expect(fixtureFail(ErrorCode.USERNAME_OR_PASSWORD_INVALID).code).toBe(10011)
+  })
+
+  it('错误码对照表覆盖文件非法与同名', () => {
+    expect(messageForCode(ErrorCode.FILE_ILLEGAL)).toBe('文件不符合约定')
+    expect(messageForCode(ErrorCode.FILE_DUPLICATE)).toBe('存在同名文件')
   })
 
   it('缺少 token 不算 LoginVO', () => {

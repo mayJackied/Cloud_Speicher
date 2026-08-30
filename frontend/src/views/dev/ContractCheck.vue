@@ -22,7 +22,7 @@
     <p>失败 → {{ failText }}</p>
 
     <h2>4. 打接口</h2>
-    <p>离线走 mock；在线经 Vite 转到 8.130.215.175:8080。login / register / checkUserName 不带 JWT；发邀请码 GET，只带头 token（用户 id 在 JWT 里）。</p>
+    <p>离线走 mock；在线经 Vite 转到 8.130.215.175:8080。login / register / checkUserName 不带 JWT；发邀请码 GET，只带头 token（用户 id 在 JWT 里）。getFiles 也要 token，成功应是 public + 自己的房间两棵树。</p>
     <p>当前会话：{{ sessionText }}。发码成功路径：用户名填 admin，先探测 login，再点 creatInviteCode。非管理员应得到 code=10002。</p>
     <p>
       <label>用户名 <input v-model="name" /></label>
@@ -37,6 +37,7 @@
       <button type="button" :disabled="loading" @click="probeRegister">探测 register</button>
       <button type="button" :disabled="loading" @click="probeLogin">探测 login</button>
       <button type="button" :disabled="loading" @click="probeInvite">探测 creatInviteCode</button>
+      <button type="button" :disabled="loading" @click="probeFiles">探测 getFiles</button>
     </p>
     <p>{{ probeText }}</p>
   </main>
@@ -47,6 +48,7 @@ import { computed, ref } from 'vue'
 import { isAxiosError } from 'axios'
 import { login, register } from '@/api/auth'
 import { creatInviteCode } from '@/api/invitations'
+import { getFiles } from '@/api/files'
 import { useApiMode } from '@/composables/useApiMode'
 import { useAuthStore } from '@/stores/auth'
 import { ErrorCode } from '@/types/errorCode'
@@ -62,6 +64,7 @@ import {
   missingRegisterKeys,
   readLoginVO,
 } from '@/dev/contract'
+import { readFilesVOList } from '@/types/file'
 
 const auth = useAuthStore()
 const { mode, setMode } = useApiMode()
@@ -71,7 +74,7 @@ const modeModel = computed({
 })
 const onlineTarget = 'http://8.130.215.175:8080'
 const name = ref('newuser')
-const password = ref('password')
+const password = ref('password1')
 const inviteCode = ref('K7M2Q9')
 const loading = ref(false)
 const probeText = ref('尚未探测')
@@ -167,6 +170,35 @@ async function probeInvite() {
     }
     if (mode.value === 'online') {
       onlineText.value = isResultShape(data) ? '通过' : '失败'
+    }
+  } catch (error) {
+    probeText.value = describeProbeError(error)
+    if (mode.value === 'online') {
+      onlineText.value = onlineCatchLabel(error)
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+async function probeFiles() {
+  if (!auth.user) {
+    probeText.value = '请先探测 login/register 成功（成功会写入会话），或先到登录页登录。getFiles 需要请求头 token。'
+    return
+  }
+  loading.value = true
+  probeText.value = '请求中…'
+  try {
+    const { data } = await getFiles()
+    const trees = isResultShape(data) && data.code === ErrorCode.OK ? readFilesVOList(data.data) : null
+    if (trees) {
+      const names = trees.map((node) => node.fileName).join('、')
+      probeText.value = `getFiles 通过：${trees.length} 棵树（${names}）`
+    } else {
+      probeText.value = describeResult(data, 'none')
+    }
+    if (mode.value === 'online') {
+      onlineText.value = trees ? '通过' : '失败'
     }
   } catch (error) {
     probeText.value = describeProbeError(error)
