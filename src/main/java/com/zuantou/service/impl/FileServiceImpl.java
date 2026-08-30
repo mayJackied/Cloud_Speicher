@@ -45,7 +45,7 @@ public class FileServiceImpl implements FileService {
 
     @Override
     public Result<Void> addFile(FileDTO addFileDTO) {
-        Integer errorCode = checkFilePermission(addFileDTO.getPath());
+        Integer errorCode = checkFilePermission(addFileDTO.getPath(), OTHER);
         if (errorCode != null) {
             return Result.error(errorCode);
         }
@@ -53,14 +53,18 @@ public class FileServiceImpl implements FileService {
         File file = new File(addFileDTO.getPath());
         if (addFileDTO.isFile()) {
             try {
-                file.createNewFile();
+                if (!file.createNewFile()) {
+                    return Result.error(ErrorCode.EXCEPTION);
+                }
                 return Result.success();
             } catch (IOException e) {
                 return Result.error(ErrorCode.EXCEPTION);
             }
         }
         try {
-            file.mkdir();
+            if (!file.mkdir()) {
+                return Result.error(ErrorCode.EXCEPTION);
+            }
             return Result.success();
         } catch (Exception e) {
             return Result.error(ErrorCode.EXCEPTION);
@@ -69,7 +73,7 @@ public class FileServiceImpl implements FileService {
 
     @Override
     public Result<Void> deleteFile(DeleteFileDTO deleteFileDTO) {
-        Integer errorCode = checkFilePermission(deleteFileDTO.getPath());
+        Integer errorCode = checkFilePermission(deleteFileDTO.getPath(), OTHER);
         if (errorCode != null) {
             return Result.error(errorCode);
         }
@@ -88,7 +92,7 @@ public class FileServiceImpl implements FileService {
             return Result.error(ErrorCode.FILE_NAME_ILLEGAL);
         }
 
-        Integer errorCode = checkFilePermission(renameFileDTO.getPath());
+        Integer errorCode = checkFilePermission(renameFileDTO.getPath(), OTHER);
         if (errorCode != null) {
             return Result.error(errorCode);
         }
@@ -103,7 +107,7 @@ public class FileServiceImpl implements FileService {
 
     @Override
     public Result<Void> uploadFile(UploadFileDTO uploadFileDTO) {
-        Integer errorCode = checkFilePermission(uploadFileDTO.getPath());
+        Integer errorCode = checkFilePermission(uploadFileDTO.getPath(), OTHER);
         if (errorCode != null) {
             return Result.error(errorCode);
         }
@@ -123,7 +127,9 @@ public class FileServiceImpl implements FileService {
 
         File file = new File(uploadFileDTO.getPath(), fileName);
         try {
-            file.createNewFile();
+            if (!file.createNewFile()) {
+                return Result.error(ErrorCode.EXCEPTION);
+            }
         } catch (IOException e) {
             return Result.error(ErrorCode.EXCEPTION);
         }
@@ -146,7 +152,7 @@ public class FileServiceImpl implements FileService {
 
     @Override
     public void downloadFile(DownloadFileDTO downloadFileDTO, HttpServletResponse response) {
-        Integer errorCode = checkFilePermission(downloadFileDTO.getPath());
+        Integer errorCode = checkFilePermission(downloadFileDTO.getPath(), SEARCH_AND_DOWNLOAD);
 
         if (errorCode != null) {
             throw new BusinessException(errorCode);
@@ -186,7 +192,7 @@ public class FileServiceImpl implements FileService {
 
     @Override
     public Result<Void> zip(ZipFileDTO zipFileDTO) {
-        Integer errorCode = checkFilePermission(zipFileDTO.getPath());
+        Integer errorCode = checkFilePermission(zipFileDTO.getPath(),OTHER);
         if (errorCode != null) {
             return Result.error(errorCode);
         }
@@ -200,7 +206,7 @@ public class FileServiceImpl implements FileService {
 
     @Override
     public Result<Void> unzip(ZipFileDTO zipFileDTO) {
-        Integer errorCode = checkFilePermission(zipFileDTO.getPath());
+        Integer errorCode = checkFilePermission(zipFileDTO.getPath(),OTHER);
         if (errorCode != null) {
             return Result.error(errorCode);
         }
@@ -218,7 +224,7 @@ public class FileServiceImpl implements FileService {
             return Result.error(ErrorCode.FILE_ILLEGAL);
         }
 
-        Integer i1 = checkFilePermission(moveFileDTO.getPath());
+        Integer i1 = checkFilePermission(moveFileDTO.getPath(),OTHER);
         if (i1 != null) {
             return Result.error(i1);
         }
@@ -226,7 +232,7 @@ public class FileServiceImpl implements FileService {
         if (path2.isFile()) {
             return Result.error(ErrorCode.FILE_ILLEGAL);
         }
-        Integer i2 = checkFilePermission(moveFileDTO.getTargetDir());
+        Integer i2 = checkFilePermission(moveFileDTO.getTargetDir(),OTHER);
         if (i2 != null) {
             return Result.error(i2);
         }
@@ -260,7 +266,7 @@ public class FileServiceImpl implements FileService {
         }
     }
 
-    private Integer checkFilePermission(String path) {
+    private Integer checkFilePermission(String path, int operationType) {
         Path target = Paths.get(path).toAbsolutePath().normalize();
         if (!target.toFile().exists()) {
             return ErrorCode.FILE_NOT_FOUND;
@@ -278,11 +284,14 @@ public class FileServiceImpl implements FileService {
             return ErrorCode.NO_PERMISSION;
         }
 
-        if (target.startsWith(userPath) || admin) {
+        if (target.startsWith(userPath) || admin || operationType == SEARCH_AND_DOWNLOAD) {
             return null;
         }
         return ErrorCode.NO_PERMISSION;
     }
+
+    private final int SEARCH_AND_DOWNLOAD = 0;
+    private final int OTHER = 1;
 
     public FileServiceImpl(MyValFileProperties fileProperties, UserMapper userMapper) {
         this.fileProperties = fileProperties;
