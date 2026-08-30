@@ -1,5 +1,0 @@
-RegisterDTO {String name; String password; Integer invite_code}
-
-CreatInviteCodeDTO {Integer userId; String name}
-
-LoginDTO {String name; String password}
