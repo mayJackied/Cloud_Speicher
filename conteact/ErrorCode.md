@@ -24,6 +24,7 @@
 | 20002 | FILE_OPERATION_FAILED        | 文件操作失败                    |
 | 20003 | FILE_NAME_ILLEGAL            | 文件名不合法                    |
 | 20004 | FILE_NOT_FOUND               | 文件不存在                     |
-|       |                              |                           |
+| 20005 | FILE_ILLEGAL                 | 文件不符合约定                   |
+| 20006 | FILE_DUPLICATE               | 存在同名文件                    |
 
 

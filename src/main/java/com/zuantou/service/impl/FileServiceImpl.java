@@ -1,6 +1,7 @@
 package com.zuantou.service.impl;
 
 import com.zuantou.common.exception.BusinessException;
+import com.zuantou.common.properties.CommonProperties;
 import com.zuantou.common.properties.ErrorCode;
 import com.zuantou.common.utils.ZipUtil;
 import com.zuantou.mapper.UserMapper;
@@ -20,6 +21,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -190,7 +192,7 @@ public class FileServiceImpl implements FileService {
         }
 
         try {
-            return ZipUtil.zip(zipFileDTO.getPath(),zipFileDTO.getTargetDir());
+            return ZipUtil.zip(zipFileDTO.getPath(), zipFileDTO.getTargetDir());
         } catch (IOException e) {
             return Result.error(ErrorCode.EXCEPTION);
         }
@@ -204,7 +206,55 @@ public class FileServiceImpl implements FileService {
         }
 
         try {
-            return ZipUtil.unzip(zipFileDTO.getPath(),zipFileDTO.getTargetDir());
+            return ZipUtil.unzip(zipFileDTO.getPath(), zipFileDTO.getTargetDir());
+        } catch (IOException e) {
+            return Result.error(ErrorCode.EXCEPTION);
+        }
+    }
+
+    @Override
+    public Result<Void> moveFile(MoveFileDTO moveFileDTO) {
+        if (moveFileDTO.getTargetDir() == null || moveFileDTO.getTargetDir().isEmpty()){
+            return Result.error(ErrorCode.FILE_ILLEGAL);
+        }
+
+        Integer i1 = checkFilePermission(moveFileDTO.getPath());
+        if (i1 != null) {
+            return Result.error(i1);
+        }
+        File path2 = new File(moveFileDTO.getTargetDir());
+        if (path2.isFile()) {
+            return Result.error(ErrorCode.FILE_ILLEGAL);
+        }
+        Integer i2 = checkFilePermission(moveFileDTO.getTargetDir());
+        if (i2 != null) {
+            return Result.error(i2);
+        }
+
+        File f1 = new File(moveFileDTO.getPath());
+        File f2 = new File(path2, f1.getName());
+
+        if (f1.toPath().equals(f2.toPath())) {
+            return Result.error(ErrorCode.FILE_ILLEGAL);
+        }
+        if (f2.exists()) {
+            if (moveFileDTO.getFileHandle() != CommonProperties.REPLACE){
+                switch (moveFileDTO.getFileHandle()) {
+                    case CommonProperties.IGNORE -> {
+                        return Result.success();
+                    }
+                    case CommonProperties.DEFAULT -> {
+                        return Result.error(ErrorCode.FILE_DUPLICATE);
+                    }
+                }
+            }
+            if (!f2.delete()) {
+                return Result.error(ErrorCode.EXCEPTION);
+            }
+        }
+        try {
+            Files.move(f1.toPath(), f2.toPath());
+            return Result.success();
         } catch (IOException e) {
             return Result.error(ErrorCode.EXCEPTION);
         }
@@ -212,14 +262,14 @@ public class FileServiceImpl implements FileService {
 
     private Integer checkFilePermission(String path) {
         Path target = Paths.get(path).toAbsolutePath().normalize();
-        if (target.toFile().exists()) {
+        if (!target.toFile().exists()) {
             return ErrorCode.FILE_NOT_FOUND;
         }
         Path publicPath = Paths.get(fileProperties.getPublicPath()).toAbsolutePath().normalize();
         Path userPath = Paths.get(fileProperties.getPath(), UserContext.getUserId().toString()).toAbsolutePath().normalize();
 
         User user = userMapper.selectById(UserContext.getUserId());
-        if (user == null){
+        if (user == null) {
             return ErrorCode.USER_NOT_FOUND;
         }
         boolean admin = user.isAdmin();

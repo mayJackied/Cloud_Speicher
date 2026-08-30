@@ -21,4 +21,6 @@ public final class ErrorCode {
     public static final Integer FILE_OPERATION_FAILED = 20002;
     public static final Integer FILE_NAME_ILLEGAL = 20003;
     public static final Integer FILE_NOT_FOUND = 20004;
+    public static final Integer FILE_ILLEGAL = 20005;
+    public static final Integer FILE_DUPLICATE = 20006;
 }

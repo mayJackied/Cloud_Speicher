@@ -68,4 +68,8 @@ DTO: ZipFileDTO zipFileDTO
 post: /api/file/unzip
 DTO: ZipFileDTO zipFileDTO
 
+*move_file*
+post: /api/file/moveFile
+DTO: MoveFileDTO moveFileDTO
+
 }

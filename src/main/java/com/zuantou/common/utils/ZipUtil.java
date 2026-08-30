@@ -1,5 +1,6 @@
 package com.zuantou.common.utils;
 
+import com.zuantou.common.properties.ErrorCode;
 import com.zuantou.pojo.Result;
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
 import org.apache.commons.compress.archivers.zip.ZipArchiveInputStream;
@@ -217,6 +218,9 @@ public class ZipUtil {
             targetDir = new File(targetDirPath);
         }
 
+        if (targetDir.isFile()){
+            return Result.error(ErrorCode.FILE_ILLEGAL);
+        }
 
         if (!targetDir.exists()) {
             targetDir.mkdirs();

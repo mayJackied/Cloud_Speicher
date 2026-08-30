@@ -61,6 +61,11 @@ public class FileController {
         return fileService.unzip(zipFileDTO);
     }
 
+    @PostMapping("/moveFile")
+    public Result<Void> moveFile(@RequestBody MoveFileDTO moveFileDTO){
+        return fileService.moveFile(moveFileDTO);
+    }
+
     public FileController(FileService fileService) {
         this.fileService = fileService;
     }

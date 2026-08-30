@@ -4,11 +4,7 @@ RegisterDTO {String name; String password; Integer invite_code}
 
 LoginDTO {String name; String password}
 
-/**
- * 从相对路径的最底层文件开始
- * z.B. "../files/public/document/a.txt"
- */
-FileDTO {boolean isFile; String path}
+FileDTO {boolean isFile; String path} Tipp: path 从相对路径的最底层文件开始; z.B. "../files/public/document/a.txt"
 
 DeleteFileDTO {String path}
 
@@ -18,4 +14,6 @@ UploadFileDTO { String path; MultipartFile file }
 
 DownloadFileDTO { String path }
 
-ZipFileDTO { String path; String targetDir } Tipp: 要求是个文件夹; 空字符串为默认路径: 原文件的父级路径
+ZipFileDTO { String path; String targetDir } Tipp: targetDir 要求是个文件夹; 空字符串为默认路径: 原文件的父级路径
+
+MoveFileDTO { String path; String targetDir; Integer fileHandle } Tipp: targetDir 禁止为空; fileHandle 是如果存在同名文件处理方式; 0 默认值, 不处理; 1 替换; 2 忽略(前端一般不发送这个请求)

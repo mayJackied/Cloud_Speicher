@@ -23,4 +23,6 @@ public interface FileService {
     Result<Void> zip(ZipFileDTO zipFileDTO);
 
     Result<Void> unzip(ZipFileDTO zipFileDTO);
+
+    Result<Void> moveFile(MoveFileDTO moveFileDTO);
 }
