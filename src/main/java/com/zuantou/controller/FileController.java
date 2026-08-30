@@ -26,7 +26,7 @@ public class FileController {
 
     @PostMapping("/addFile")
     @Operation(summary = "add_file")
-    public Result<Void> addFile(@RequestBody AddFileDTO fileDTO) {
+    public Result<Void> addFile(@RequestBody FileDTO fileDTO) {
         return fileService.addFile(fileDTO);
     }
 
@@ -50,6 +50,15 @@ public class FileController {
     @PostMapping("/downloadFile")
     public void downloadFile(@RequestBody DownloadFileDTO downloadFileDTO, HttpServletResponse response) {
         fileService.downloadFile(downloadFileDTO, response);
+    }
+
+    @PostMapping("/zip")
+    public Result<Void> zip(@RequestBody ZipFileDTO zipFileDTO){
+        return fileService.zip(zipFileDTO);
+    }
+    @PostMapping("/unzip")
+    public Result<Void> unzip(@RequestBody ZipFileDTO zipFileDTO){
+        return fileService.unzip(zipFileDTO);
     }
 
     public FileController(FileService fileService) {

@@ -38,8 +38,8 @@ VO: <List<MyFile> filesVOS>
 
 *add_file*
 post: /api/file/addFile
-DTO: AddFileDTO addFileDTO
-VO Result<Void>
+DTO: FileDTO addFileDTO
+VO: Result<Void>
 
 *delete_file*
 post: /api/file/deleteFile
@@ -58,6 +58,14 @@ VO: Result<Void>
 
 *download_file*
 post: /api/file/downloadFile
-DTO DownloadFileDTO downloadFileDTO
+DTO: DownloadFileDTO downloadFileDTO
+
+*zip*
+post: /api/file/zip
+DTO: ZipFileDTO zipFileDTO
+
+*unzip*
+post: /api/file/unzip
+DTO: ZipFileDTO zipFileDTO
 
 }

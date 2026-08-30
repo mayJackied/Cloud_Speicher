@@ -2,6 +2,7 @@ package com.zuantou.service.impl;
 
 import com.zuantou.common.exception.BusinessException;
 import com.zuantou.common.properties.ErrorCode;
+import com.zuantou.common.utils.ZipUtil;
 import com.zuantou.mapper.UserMapper;
 import com.zuantou.pojo.User;
 import com.zuantou.pojo.dto.*;
@@ -41,7 +42,7 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
-    public Result<Void> addFile(AddFileDTO addFileDTO) {
+    public Result<Void> addFile(FileDTO addFileDTO) {
         Integer errorCode = checkFilePermission(addFileDTO.getPath());
         if (errorCode != null) {
             return Result.error(errorCode);
@@ -181,8 +182,39 @@ public class FileServiceImpl implements FileService {
         }
     }
 
+    @Override
+    public Result<Void> zip(ZipFileDTO zipFileDTO) {
+        Integer errorCode = checkFilePermission(zipFileDTO.getPath());
+        if (errorCode != null) {
+            return Result.error(errorCode);
+        }
+
+        try {
+            return ZipUtil.zip(zipFileDTO.getPath(),zipFileDTO.getTargetDir());
+        } catch (IOException e) {
+            return Result.error(ErrorCode.EXCEPTION);
+        }
+    }
+
+    @Override
+    public Result<Void> unzip(ZipFileDTO zipFileDTO) {
+        Integer errorCode = checkFilePermission(zipFileDTO.getPath());
+        if (errorCode != null) {
+            return Result.error(errorCode);
+        }
+
+        try {
+            return ZipUtil.unzip(zipFileDTO.getPath(),zipFileDTO.getTargetDir());
+        } catch (IOException e) {
+            return Result.error(ErrorCode.EXCEPTION);
+        }
+    }
+
     private Integer checkFilePermission(String path) {
         Path target = Paths.get(path).toAbsolutePath().normalize();
+        if (target.toFile().exists()) {
+            return ErrorCode.FILE_NOT_FOUND;
+        }
         Path publicPath = Paths.get(fileProperties.getPublicPath()).toAbsolutePath().normalize();
         Path userPath = Paths.get(fileProperties.getPath(), UserContext.getUserId().toString()).toAbsolutePath().normalize();
 

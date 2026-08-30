@@ -17,3 +17,5 @@ RenameFileDTO {String path; String new_name} Tipp: new_name darf nicht leer sein
 UploadFileDTO { String path; MultipartFile file }
 
 DownloadFileDTO { String path }
+
+ZipFileDTO { String path; String targetDir } Tipp: 要求是个文件夹; 空字符串为默认路径: 原文件的父级路径

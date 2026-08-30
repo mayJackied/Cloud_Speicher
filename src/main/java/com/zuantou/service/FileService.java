@@ -10,7 +10,7 @@ import java.util.List;
 public interface FileService {
     Result<List<FilesVO>> getFiles();
 
-    Result<Void> addFile(AddFileDTO fileDTO);
+    Result<Void> addFile(FileDTO fileDTO);
 
     Result<Void> deleteFile(DeleteFileDTO deleteFileDTO);
 
@@ -19,4 +19,8 @@ public interface FileService {
     Result<Void> uploadFile(UploadFileDTO uploadFileDTO);
 
     void downloadFile(DownloadFileDTO downloadFileDTO, HttpServletResponse response);
+
+    Result<Void> zip(ZipFileDTO zipFileDTO);
+
+    Result<Void> unzip(ZipFileDTO zipFileDTO);
 }
