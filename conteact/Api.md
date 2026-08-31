@@ -27,7 +27,11 @@ no JWT
 
 *delete*
 post: /api/user/delete
-VO Result<Void>
+VO: Result<Void>
+
+*logout*
+post: /api/user/logout
+VO: Result<Void>
 }
 
 File {
