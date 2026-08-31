@@ -6,7 +6,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
-public class Util {
+public class FileUtil {
     public static FilesVO getFiles(String path){
         File file = new File(path);
         List<FilesVO> list = new ArrayList<>();

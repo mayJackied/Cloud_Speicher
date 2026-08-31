@@ -12,7 +12,7 @@ import com.zuantou.common.properties.MyValFileProperties;
 import com.zuantou.pojo.Result;
 import com.zuantou.pojo.vo.FilesVO;
 import com.zuantou.service.FileService;
-import com.zuantou.common.utils.Util;
+import com.zuantou.common.utils.FileUtil;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -38,7 +38,7 @@ public class FileServiceImpl implements FileService {
         List<FilesVO> filesVOS = new ArrayList<>();
         List<String> list = Arrays.asList(fileProperties.getPublicPath(), fileProperties.getPath() + "/" + UserContext.getUserId().toString());
         for (String s : list) {
-            filesVOS.add(Util.getFiles(s));
+            filesVOS.add(FileUtil.getFiles(s));
         }
         return Result.success(filesVOS);
     }

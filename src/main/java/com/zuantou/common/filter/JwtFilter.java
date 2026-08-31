@@ -1,9 +1,11 @@
 package com.zuantou.common.filter;
 
 import com.alibaba.fastjson.JSONObject;
+import com.zuantou.common.jwt.JwtBlacklistMap;
 import com.zuantou.common.properties.ErrorCode;
-import com.zuantou.common.utils.JwtUtils;
+import com.zuantou.common.jwt.JwtUtils;
 import com.zuantou.common.utils.UserContext;
+import com.zuantou.pojo.JwtBlacklist;
 import com.zuantou.pojo.Result;
 import jakarta.servlet.*;
 import jakarta.servlet.annotation.WebFilter;
@@ -16,9 +18,11 @@ import java.io.IOException;
 @WebFilter(urlPatterns = "/*")
 public class JwtFilter implements Filter {
     final JwtUtils jwtUtils;
+    final JwtBlacklistMap jwtBlacklistMap;
 
-    public JwtFilter(JwtUtils jwtUtils) {
+    public JwtFilter(JwtUtils jwtUtils, JwtBlacklistMap jwtBlacklistMap) {
         this.jwtUtils = jwtUtils;
+        this.jwtBlacklistMap = jwtBlacklistMap;
     }
 
     @Override
@@ -34,21 +38,28 @@ public class JwtFilter implements Filter {
 
         String jwt = request.getHeader("token");
         if (jwt == null || jwt.isEmpty()){
-            String notLogin = JSONObject.toJSONString(Result.error(ErrorCode.NOT_LOGIN));
-            response.getWriter().write(notLogin);
+            response.getWriter().write(JSONObject.toJSONString(Result.error(ErrorCode.NOT_LOGIN)));
+            return;
         }
-
+        for (JwtBlacklist jwtBlacklist : jwtBlacklistMap.blacklists) {
+            if (jwtUtils.sha256(jwt).equals(jwtBlacklist.getJwt())){
+                response.getWriter().write(JSONObject.toJSONString(Result.error(ErrorCode.BLACKLISTED_JWT)));
+                return;
+            }
+        }
         try {
             UserContext.setUserId(Integer.valueOf(jwtUtils.parseJWT(jwt).get("user_id").toString()));
+            UserContext.setBlacklistedJwt(jwtUtils.sha256(jwt));
         } catch (Exception e){
-            String notLogin = JSONObject.toJSONString(Result.error(ErrorCode.NOT_LOGIN));
-            response.getWriter().write(notLogin);
+            response.getWriter().write(JSONObject.toJSONString(Result.error(ErrorCode.NOT_LOGIN)));
             return;
         }
 
-        filterChain.doFilter(servletRequest, servletResponse);
-
-        UserContext.clear();
+        try {
+            filterChain.doFilter(request, response);
+        } finally {
+            UserContext.clear();
+        }
     }
 
 }

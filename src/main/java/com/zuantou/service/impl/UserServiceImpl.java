@@ -1,10 +1,11 @@
 package com.zuantou.service.impl;
 
+import com.zuantou.common.jwt.JwtBlacklistMap;
 import com.zuantou.common.properties.ErrorCode;
 import com.zuantou.common.properties.MyValFileProperties;
 import com.zuantou.pojo.dto.CheckUserNameDTO;
 import com.zuantou.pojo.vo.CheckUserNameVO;
-import com.zuantou.common.utils.JwtUtils;
+import com.zuantou.common.jwt.JwtUtils;
 import com.zuantou.common.utils.UserContext;
 import com.zuantou.mapper.InviteCodeMapper;
 import com.zuantou.mapper.UserMapper;
@@ -29,6 +30,7 @@ public class UserServiceImpl implements UserService {
     final InviteCodeMapper inviteCodeMapper;
     final JwtUtils jwtUtils;
     final MyValFileProperties fileProperties;
+    final JwtBlacklistMap jwtBlacklistMap;
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
@@ -104,7 +106,9 @@ public class UserServiceImpl implements UserService {
                 loginVO.setToken(jwtUtils.generateJwt(Map.of("user_id", loginVO.getUserId())));
 
                 File file = new File(fileProperties.getPath()+"/"+u.getUserId());
-                file.mkdir();
+                if (file.mkdir()) {
+                    return Result.error(ErrorCode.EXCEPTION);
+                }
 
                 return Result.success(loginVO);
             }
@@ -132,16 +136,28 @@ public class UserServiceImpl implements UserService {
     @Override
     public Result<Void> delete() {
         if ((userMapper.deleteById(UserContext.getUserId())) == 1) {
+            addJwtBlacklist(UserContext.getBlacklistedJwt());
             return Result.success();
         }
         return Result.error(ErrorCode.DELETE_USER_FAILED);
     }
 
+    @Override
+    public Result<Void> logout() {
+        addJwtBlacklist(UserContext.getBlacklistedJwt());
+        return Result.success();
+    }
 
-    public UserServiceImpl(UserMapper userMapper, InviteCodeMapper inviteCodeMapper, JwtUtils jwtUtils, MyValFileProperties myValFileProperties) {
+
+    private void addJwtBlacklist(String blacklistedJwt){
+        jwtBlacklistMap.addJwtBlacklist(blacklistedJwt);
+    }
+
+    public UserServiceImpl(UserMapper userMapper, InviteCodeMapper inviteCodeMapper, JwtUtils jwtUtils, MyValFileProperties myValFileProperties, JwtBlacklistMap jwtBlacklistMap) {
         this.userMapper = userMapper;
         this.inviteCodeMapper = inviteCodeMapper;
         this.jwtUtils = jwtUtils;
         this.fileProperties = myValFileProperties;
+        this.jwtBlacklistMap = jwtBlacklistMap;
     }
 }

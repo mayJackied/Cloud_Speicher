@@ -18,7 +18,7 @@
 | 10010 | INVITE_CODE_INVALID          | 无效的邀请码                    |       
 | 10011 | USERNAME_OR_PASSWORD_INVALID | 用户名或密码不正确                 |      
 | 10012 | DELETE_USER_FAILED           | 删除用户失败                    |       
-|       |                              |                           |
+| 10013 | BLACKLISTED_JWT              | JWT 已作废                   |
 |       |                              |                           |
 | 20001 | NO_PERMISSION                | 您没有权限操作此文件                |       
 | 20002 | FILE_OPERATION_FAILED        | 文件操作失败                    |

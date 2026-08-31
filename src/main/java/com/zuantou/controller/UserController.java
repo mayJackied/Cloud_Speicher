@@ -50,4 +50,9 @@ public class UserController {
     public Result<Void> delete(){
         return userService.delete();
     }
+
+    @GetMapping("/logout")
+    public Result<Void> logout(){
+        return userService.logout();
+    }
 }

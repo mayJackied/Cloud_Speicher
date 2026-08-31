@@ -16,6 +16,7 @@ public final class ErrorCode {
     public static final Integer INVITE_CODE_INVALID = 10010;
     public static final Integer USERNAME_OR_PASSWORD_INVALID = 10011;
     public static final Integer DELETE_USER_FAILED = 10012;
+    public static final Integer BLACKLISTED_JWT = 10013;
 
     public static final Integer NO_PERMISSION = 20001;
     public static final Integer FILE_OPERATION_FAILED = 20002;
