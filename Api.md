@@ -12,9 +12,9 @@ Swagger 后做。数据库 MySQL，服务器 `8.130.215.175:8080`（FRP，不一
 - JSON：多数字段驼峰；部分布尔/改名被 Java `@JsonProperty` 成蛇形，见字段表
 - 密码只出现在请求里
 - 需要登录的接口：请求头 **`token`** = `LoginVO.token`（不是 Bearer）。用户 id 从 JWT 取，**不要再在 DTO 里传 userId**
-- JWT 有效期 **30 天**。到期后接口回 `10000`，前端清会话并回登录页。**不做 refresh**（过期重新登录即可）
+- JWT 有效期 **30 天**。到期后接口回 `10000`；退出/删号后该 token 进黑名单，再请求回 `10013`。前端两种都清会话回登录页。**不做 refresh**
 - `no jwt`：`/checkUserName`、`/login`、`/register`
-- 未登录 / token 过期：`code = 10000`，前端清会话并回登录页
+- 未登录 / token 过期：`code = 10000`；token 已作废：`code = 10013`。前端都清会话并回登录页
 - `Document` 对象已删除，不要再对接 `documentId`
 
 产品模型：多用户、单人单间、共享一块服务器硬盘。每人磁盘目录用 JWT 里的 `user_id` 定位。另有一块 public 目录，列表接口会一并返回。
@@ -53,6 +53,7 @@ HTTP 仍可能是 200 包着失败码，或 4xx/500。前端两种都读 `code`�
 | 10010 | INVITE_CODE_INVALID | 无效的邀请码 |
 | 10011 | USERNAME_OR_PASSWORD_INVALID | 用户名或密码不正确 |
 | 10012 | DELETE_USER_FAILED | 删除用户失败 |
+| 10013 | BLACKLISTED_JWT | JWT 已作废（退出或删号后） |
 | 20001 | NO_PERMISSION | 您没有权限操作此文件 |
 | 20002 | FILE_OPERATION_FAILED | 文件操作失败 |
 | 20003 | FILE_NAME_ILLEGAL | 文件名不合法 |
@@ -101,7 +102,14 @@ VO: `{ inviteCode }`
 *delete*　要 JWT  
 POST `/api/user/delete`  
 DTO: 无  
-VO: `Void`
+VO: `Void`  
+成功后该 token 进黑名单，再请求回 `10013`
+
+*logout*　要 JWT  
+GET `/api/user/logout`  
+DTO: 无  
+VO: `Void`  
+Java 是 GET（conteact 写成了 POST，以源码为准）。把当前 token 拉黑；前端清会话回登录。之后同一 token → `10013`
 
 ### 文件　`/api/file`（均要 JWT；P3/P4 再铺页面）
 
@@ -197,9 +205,9 @@ Conventions:
 - JSON is mostly camelCase; some booleans/renames are snake_case via Jackson `@JsonProperty` (see field list)
 - Password only in requests
 - Authenticated calls: header **`token`** = `LoginVO.token` (not Bearer). User id comes from the JWT; **do not send `userId` in DTOs**
-- JWT lasts **30 days**. After expiry the API returns `10000`; the frontend clears the session and returns to login. **No refresh** (just log in again)
+- JWT lasts **30 days**. Expiry → `10000`. Logout/delete blacklists the token → `10013`. Frontend clears the session in both cases. **No refresh**
 - `no jwt`: `/checkUserName`, `/login`, `/register`
-- Not logged in / expired token: `code = 10000`; frontend clears the session and returns to login
+- Not logged in / expired token: `code = 10000`; revoked token: `code = 10013`. Frontend clears the session in both cases
 - `Document` was removed; do not use `documentId`
 
 Product: multi-user, one private room per user, one shared server disk. Each user's folder is located with JWT `user_id`. A public folder is returned together with the file list.
@@ -238,6 +246,7 @@ Full table: backend `conteact/ErrorCode.md`. Common ones:
 | 10010 | INVITE_CODE_INVALID | invalid invite code |
 | 10011 | USERNAME_OR_PASSWORD_INVALID | username or password incorrect |
 | 10012 | DELETE_USER_FAILED | failed to delete user |
+| 10013 | BLACKLISTED_JWT | JWT revoked (after logout or delete) |
 | 20001 | NO_PERMISSION | no permission for this file |
 | 20002 | FILE_OPERATION_FAILED | file operation failed |
 | 20003 | FILE_NAME_ILLEGAL | illegal file name |
@@ -286,7 +295,14 @@ VO: `{ inviteCode }`
 *delete*　JWT  
 POST `/api/user/delete`  
 DTO: none  
-VO: `Void`
+VO: `Void`  
+The token is blacklisted afterwards; later calls return `10013`
+
+*logout*　JWT  
+GET `/api/user/logout`  
+DTO: none  
+VO: `Void`  
+Java is GET (`conteact` wrote POST). Blacklists the current token; frontend clears the session. Same token afterwards → `10013`
 
 ### File　`/api/file` (all JWT; UI in P3/P4)
 

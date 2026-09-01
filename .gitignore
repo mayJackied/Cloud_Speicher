@@ -65,3 +65,10 @@ lerna-debug.log*
 
 # 后端分支本地检出（不随前端上传）
 backend/
+
+# 尾も白い Natto 等字体文件禁止再分发（条款第 2 条），只留本机
+frontend/src/assets/fonts/*.otf
+frontend/src/assets/fonts/*.ttf
+frontend/src/assets/fonts/*.woff
+frontend/src/assets/fonts/*.woff2
+

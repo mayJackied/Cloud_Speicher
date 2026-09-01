@@ -1,48 +1,84 @@
 <template>
-  <main>
-    <h1>注册</h1>
-    <el-form ref="formRef" :model="form" :rules="rules" label-position="top" @submit.prevent="onSubmit">
-      <el-form-item label="用户名" prop="name">
-        <el-input v-model="form.name" autocomplete="username" />
-      </el-form-item>
-      <el-form-item label="密码" prop="password">
-        <el-input v-model="form.password" type="password" show-password autocomplete="new-password" />
-      </el-form-item>
-      <el-form-item label="确认密码" prop="confirmPassword">
-        <el-input v-model="form.confirmPassword" type="password" show-password autocomplete="new-password" />
-      </el-form-item>
-      <el-form-item label="邀请码" prop="inviteCode">
-        <el-input v-model="form.inviteCode" />
-      </el-form-item>
-      <el-form-item>
-        <el-button type="primary" native-type="submit" :loading="loading">注册</el-button>
-      </el-form-item>
-    </el-form>
-    <p><router-link to="/login">去登录</router-link></p>
-  </main>
+  <ArchiveFrame>
+    <main class="arc-page">
+      <p class="arc-kicker">{{ t('auth.kicker') }}</p>
+      <h1>{{ t('auth.register') }}</h1>
+      <p v-if="message">{{ message }}</p>
+      <form @submit.prevent="onSubmit">
+        <p>
+          <label>
+            {{ t('auth.userName') }}
+            <input
+              v-model="form.name"
+              name="name"
+              autocomplete="username"
+              spellcheck="false"
+            />
+          </label>
+          <span class="arc-hint" :class="nameHintClass">{{ nameHint }}</span>
+        </p>
+        <p>
+          <label>
+            {{ t('auth.password') }}
+            <input
+              v-model="form.password"
+              type="password"
+              name="password"
+              autocomplete="new-password"
+            />
+          </label>
+          <span class="arc-hint" :class="passwordHintClass">{{ passwordHint }}</span>
+        </p>
+        <p>
+          <label>
+            {{ t('auth.confirmPassword') }}
+            <input
+              v-model="form.confirmPassword"
+              type="password"
+              name="confirmPassword"
+              autocomplete="new-password"
+            />
+          </label>
+          <span v-if="confirmHint" class="arc-hint is-live">{{ confirmHint }}</span>
+        </p>
+        <p>
+          <label>
+            {{ t('auth.invite') }}
+            <input v-model="form.inviteCode" name="inviteCode" spellcheck="false" />
+          </label>
+          <span v-if="inviteHint" class="arc-hint is-live">{{ inviteHint }}</span>
+        </p>
+        <p>
+          <button type="submit" :disabled="loading">
+            {{ loading ? t('auth.submitting') : t('auth.commitRegister') }}
+          </button>
+        </p>
+      </form>
+      <p><router-link to="/login">{{ t('auth.goSignIn') }}</router-link></p>
+      <LocaleSwitch />
+    </main>
+  </ArchiveFrame>
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { isAxiosError } from 'axios'
-import type { FormInstance, FormRules } from 'element-plus'
-import { ElMessage } from 'element-plus'
 import { checkUserName, register } from '@/api/auth'
+import ArchiveFrame from '@/components/drive/ArchiveFrame.vue'
+import LocaleSwitch from '@/components/LocaleSwitch.vue'
+import { useI18n } from '@/composables/useI18n'
 import { describeResult, isResultOk, isResultShape, readCheckUserNameVO, readLoginVO } from '@/dev/contract'
 import { useAuthStore } from '@/stores/auth'
-import {
-  NAME_PATTERN,
-  NAME_RULE_TEXT,
-  PASSWORD_PATTERN,
-  PASSWORD_RULE_TEXT,
-} from '@/types/constraints'
+import { NAME_PATTERN, PASSWORD_PATTERN } from '@/types/constraints'
 import { ErrorCode, messageForCode } from '@/types/errorCode'
 
-const formRef = ref<FormInstance>()
 const loading = ref(false)
+const submitted = ref(false)
+const message = ref('')
 const auth = useAuthStore()
 const router = useRouter()
+const { t } = useI18n()
 
 const form = reactive({
   name: '',
@@ -51,34 +87,52 @@ const form = reactive({
   inviteCode: '',
 })
 
-const rules: FormRules<typeof form> = {
-  name: [
-    { required: true, message: '用户名不能为空', trigger: 'blur' },
-    { pattern: NAME_PATTERN, message: NAME_RULE_TEXT, trigger: 'blur' },
-  ],
-  password: [
-    { required: true, message: '密码不能为空', trigger: 'blur' },
-    { pattern: PASSWORD_PATTERN, message: PASSWORD_RULE_TEXT, trigger: 'blur' },
-  ],
-  confirmPassword: [
-    { required: true, message: '请再次输入密码', trigger: 'blur' },
-    {
-      validator: (_rule, value: string, callback) => {
-        if (value !== form.password) {
-          callback(new Error('确认密码必须一致'))
-          return
-        }
-        callback()
-      },
-      trigger: 'blur',
-    },
-  ],
-  inviteCode: [{ required: true, message: '邀请码不能为空', trigger: 'blur' }],
-}
+const nameOk = computed(() => NAME_PATTERN.test(form.name.trim()))
+const passwordOk = computed(() => PASSWORD_PATTERN.test(form.password))
+const confirmOk = computed(() => form.confirmPassword.length > 0 && form.confirmPassword === form.password)
+const inviteOk = computed(() => form.inviteCode.trim().length > 0)
+
+const nameHint = computed(() => t('auth.nameRule'))
+const passwordHint = computed(() => t('auth.passwordRule'))
+
+const nameHintClass = computed(() => {
+  if (!form.name) {
+    return ''
+  }
+  return nameOk.value ? 'is-ok' : 'is-live'
+})
+
+const passwordHintClass = computed(() => {
+  if (!form.password) {
+    return ''
+  }
+  return passwordOk.value ? 'is-ok' : 'is-live'
+})
+
+const confirmHint = computed(() => {
+  if (!form.confirmPassword && !submitted.value) {
+    return ''
+  }
+  if (!form.confirmPassword) {
+    return t('auth.confirmEmpty')
+  }
+  return confirmOk.value ? '' : t('auth.confirmMismatch')
+})
+
+const inviteHint = computed(() => {
+  if (!submitted.value || inviteOk.value) {
+    return ''
+  }
+  return t('error.10009')
+})
+
+const formReady = computed(() => nameOk.value && passwordOk.value && confirmOk.value && inviteOk.value)
 
 async function onSubmit() {
-  const ok = await formRef.value?.validate().catch(() => false)
-  if (!ok) {
+  submitted.value = true
+  message.value = ''
+  if (!formReady.value) {
+    message.value = t('auth.fillRegister')
     return
   }
 
@@ -95,7 +149,7 @@ async function onSubmit() {
       if (isResultOk(checkRes.data)) {
         const vo = readCheckUserNameVO(checkRes.data.data)
         if (vo && !vo.isAvailable) {
-          ElMessage.error('用户名已存在')
+          message.value = t('auth.nameTaken')
           return
         }
       }
@@ -105,30 +159,29 @@ async function onSubmit() {
 
     const { data } = await register(dto)
     if (!isResultShape(data)) {
-      ElMessage.error(describeResult(data))
+      message.value = describeResult(data)
       return
     }
     if (data.code === ErrorCode.OK) {
       const vo = readLoginVO(data.data)
       if (!vo) {
-        ElMessage.error(describeResult(data))
+        message.value = describeResult(data)
         return
       }
       auth.setSession(vo)
-      ElMessage.success('注册成功')
       await router.push({ name: 'drive' })
       return
     }
-    ElMessage.error(messageForCode(data.code))
+    message.value = messageForCode(data.code)
   } catch (error) {
     if (isAxiosError(error) && error.response) {
       const body = error.response.data
-      ElMessage.error(
-        isResultShape(body) ? messageForCode(body.code) : `注册失败（HTTP ${error.response.status}）`,
-      )
+      message.value = isResultShape(body)
+        ? messageForCode(body.code)
+        : t('auth.registerHttp', { status: error.response.status })
       return
     }
-    ElMessage.error('无法连接服务器（离线 mock 未生效，或在线 FRP 不通）')
+    message.value = t('auth.offline')
   } finally {
     loading.value = false
   }

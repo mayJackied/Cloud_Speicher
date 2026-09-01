@@ -1,0 +1,16 @@
+/* Natto — 尾花大輔 / 尾も白い demo（nattodemo-Regular.otf） */
+
+@font-face {
+  font-family: 'Natto';
+  src:
+    url('../fonts/natto.otf') format('opentype'),
+    url('../fonts/natto.woff2') format('woff2'),
+    url('../fonts/natto.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+.font-natto {
+  font-family: 'Natto', sans-serif;
+}

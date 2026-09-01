@@ -2,6 +2,9 @@ import { fileURLToPath, URL } from 'node:url'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import vue from '@vitejs/plugin-vue'
 import { defineConfig, type Plugin } from 'vite'
+import { fileBytesFromStored } from './src/dev/multipart'
+import { mimeFromName } from './src/utils/fileKind'
+import { decodeFileName } from './src/utils/text'
 
 function readRaw(req: IncomingMessage): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
@@ -36,13 +39,13 @@ function multipartFilename(body: string): string {
   const starred = /filename\*=(?:UTF-8''|utf-8'')([^;\r\n]+)/.exec(body)
   if (starred?.[1]) {
     try {
-      return decodeURIComponent(starred[1])
+      return decodeFileName(decodeURIComponent(starred[1]))
     } catch {
-      return starred[1]
+      return decodeFileName(starred[1])
     }
   }
   const match = /filename="([^"]+)"/.exec(body)
-  return match?.[1] ?? ''
+  return decodeFileName(match?.[1] ?? '')
 }
 
 function queryParam(url: string, name: string): string {
@@ -97,14 +100,26 @@ function cloneNode(node: MockNode): MockNode {
   }
 }
 
+const SAMPLE_SVG = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400">
+  <rect width="640" height="400" fill="#1e90ff"/>
+  <circle cx="180" cy="160" r="90" fill="#ff7a18"/>
+  <rect x="320" y="80" width="220" height="140" fill="#b7f53a"/>
+  <ellipse cx="400" cy="300" rx="180" ry="50" fill="#e8f4ff"/>
+</svg>`
+const sampleSvgBytes = new TextEncoder().encode(SAMPLE_SVG)
+const floraNode = mockNode('FLORA_SPECTRA.svg', true)
+floraNode.length = sampleSvgBytes.length
+
 const publicRoot: MockNode = mockNode('public', false, [
   mockNode('document', false, [mockNode('a.txt', true)]),
   mockNode('music', false, null),
-  mockNode('photo', false, null),
+  mockNode('photo', false, [floraNode]),
   mockNode('video', false, null),
 ])
 const roomRoots = new Map<string, MockNode>()
 const mockFileBytes = new Map<string, Uint8Array>()
+mockFileBytes.set(`${FILE_PREFIX}/public/photo/FLORA_SPECTRA.svg`, sampleSvgBytes)
 
 function userIdFromToken(token: string): number {
   return token === 'mock-admin-token' ? 1 : 2
@@ -217,7 +232,8 @@ function mockApiPlugin(): Plugin {
             void readRaw(req).then((bytes) => {
               const body = new TextDecoder('latin1').decode(bytes)
               const path = multipartField(body, 'path') || queryPath
-              const fileName = multipartFilename(body)
+              const fileName =
+                decodeFileName(multipartField(body, 'fileName')) || multipartFilename(body)
               const denied = fileWritable(path, token)
               if (denied) {
                 sendJson(res, fail(denied))
@@ -238,10 +254,11 @@ function mockApiPlugin(): Plugin {
                 sendJson(res, fail(20006))
                 return
               }
+              const fileBytes = fileBytesFromStored(bytes)
               const stored = mockNode(fileName, true)
-              stored.length = bytes.length
+              stored.length = fileBytes.length
               parent.filesVOS = [...kids, stored]
-              mockFileBytes.set(`${path.replace(/\/$/, '')}/${fileName}`, bytes)
+              mockFileBytes.set(`${path.replace(/\/$/, '')}/${fileName}`, fileBytes)
               sendJson(res, ok(null))
             })
             return
@@ -347,7 +364,82 @@ function mockApiPlugin(): Plugin {
                 sendJson(res, fail(20006))
                 return
               }
+              const parentPath = path.slice(0, path.lastIndexOf('/'))
+              const stored = mockFileBytes.get(path)
+              if (stored) {
+                mockFileBytes.delete(path)
+                mockFileBytes.set(`${parentPath}/${newName}`, stored)
+              }
               target.fileName = newName
+              sendJson(res, ok(null))
+              return
+            }
+
+            if (url === '/api/file/moveFile') {
+              const denied = fileWritable(path, token)
+              if (denied) {
+                sendJson(res, fail(denied))
+                return
+              }
+              const targetDir = String(parsed.targetDir ?? parsed.target_dir ?? '').replace(/\/$/, '')
+              const fileHandle = Number(parsed.fileHandle ?? parsed.file_handle ?? 0)
+              const destDenied = fileWritable(targetDir, token)
+              if (destDenied) {
+                sendJson(res, fail(destDenied))
+                return
+              }
+              const destSeg = parseFilePath(targetDir)
+              if (!destSeg || destSeg.length === 0) {
+                sendJson(res, fail(20005))
+                return
+              }
+              if (segments.length === 1) {
+                sendJson(res, fail(20001))
+                return
+              }
+              const destFolder = findMockNode(userId, destSeg)
+              if (!destFolder || destFolder.is_file) {
+                sendJson(res, fail(20005))
+                return
+              }
+              const parent = findMockNode(userId, segments.slice(0, -1))
+              const name = segments[segments.length - 1]
+              const kids = parent?.filesVOS
+              const target = kids?.find((node) => node.fileName === name)
+              if (!parent || !kids || !target) {
+                sendJson(res, fail(20004))
+                return
+              }
+              if (!target.is_file) {
+                const movingPrefix = `${path.replace(/\/$/, '')}/`
+                if (targetDir === path.replace(/\/$/, '') || targetDir.startsWith(movingPrefix)) {
+                  sendJson(res, fail(20005))
+                  return
+                }
+              }
+              const destKids = destFolder.filesVOS ?? []
+              const clash = destKids.find((node) => node.fileName === name)
+              if (clash) {
+                if (fileHandle === 2) {
+                  sendJson(res, ok(null))
+                  return
+                }
+                if (fileHandle !== 1) {
+                  sendJson(res, fail(20006))
+                  return
+                }
+                destFolder.filesVOS = destKids.filter((node) => node.fileName !== name)
+              }
+              parent.filesVOS = kids.filter((node) => node.fileName !== name)
+              destFolder.filesVOS = [...(destFolder.filesVOS ?? []), target]
+              const fromPrefix = path.replace(/\/$/, '')
+              const toPrefix = `${targetDir}/${name}`
+              for (const [key, bytes] of [...mockFileBytes.entries()]) {
+                if (key === fromPrefix || key.startsWith(`${fromPrefix}/`)) {
+                  mockFileBytes.delete(key)
+                  mockFileBytes.set(toPrefix + key.slice(fromPrefix.length), bytes)
+                }
+              }
               sendJson(res, ok(null))
               return
             }
@@ -363,21 +455,32 @@ function mockApiPlugin(): Plugin {
                 sendJson(res, fail(20004))
                 return
               }
-              const bytes = mockFileBytes.get(path) ?? new TextEncoder().encode('mock-file\n')
+              const stored = mockFileBytes.get(path) ?? new TextEncoder().encode('mock-file\n')
+              const bytes = fileBytesFromStored(stored)
+              const type = mimeFromName(node.fileName)
               res.statusCode = 200
-              res.setHeader('Content-Type', 'application/octet-stream')
-              res.setHeader('Content-Disposition', `attachment; filename="${node.fileName}"`)
+              res.setHeader('Content-Type', type)
+              res.setHeader(
+                'Content-Disposition',
+                `attachment; filename="file"; filename*=UTF-8''${encodeURIComponent(node.fileName)}`,
+              )
               res.end(Buffer.from(bytes))
               return
             }
 
-            next()
+            sendJson(res, fail(20002))
           })
           return
         }
 
         if (!url.startsWith('/api/user/')) {
           next()
+          return
+        }
+
+        if (req.method === 'GET' && url === '/api/user/logout') {
+          const token = String(req.headers.token ?? '')
+          sendJson(res, token ? ok(null) : fail(10000))
           return
         }
 

@@ -7,6 +7,8 @@
       }}
     </p>
     <p>
+      <router-link to="/drive">实验室仪表盘</router-link>
+      ｜
       <router-link to="/admin/invitations">发邀请码 /admin/invitations</router-link>
       ｜
       <router-link to="/drive/settings">设置</router-link>
@@ -27,14 +29,14 @@
     </p>
     <p>
       <button type="button" :disabled="loading || atRoot" @click="goUp">上一级</button>
-      <button type="button" :disabled="loading" @click="load">刷新</button>
+      <button type="button" :disabled="loading" @click="() => load()">刷新</button>
     </p>
     <p v-if="canWrite">
       <label>
         名称
         <input v-model="nameDraft" :disabled="loading" placeholder="新建或重命名用" />
       </label>
-      <button type="button" :disabled="loading" @click="createFolder">新建文件夹</button>
+      <button type="button" :disabled="loading" @click="() => createFolder()">新建文件夹</button>
     </p>
     <p v-if="canWrite">
       <label>
@@ -85,6 +87,7 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { logout } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
 import { usePermission } from '@/composables/usePermission'
 import { useDriveFiles } from '@/composables/useDriveFiles'
@@ -128,9 +131,14 @@ function onPickFile(event: Event) {
   input.value = ''
 }
 
-function onLogout() {
+async function onLogout() {
+  try {
+    await logout()
+  } catch {
+    // 本地仍清会话；后端作废失败时最多是旧 token 还能用到过期
+  }
   auth.logout()
-  void router.push({ name: 'login' })
+  await router.push({ name: 'login' })
 }
 
 onMounted(() => {

@@ -1,10 +1,13 @@
 import { computed, ref } from 'vue'
 import { isAxiosError } from 'axios'
-import { addFile, deleteFile, downloadFile, getFiles, renameFile, uploadFile } from '@/api/files'
+import { addFile, deleteFile, downloadFile, getFiles, moveFile, renameFile, uploadFile } from '@/api/files'
 import { isResultShape } from '@/dev/contract'
 import { useAuthStore } from '@/stores/auth'
 import { ErrorCode, messageForCode } from '@/types/errorCode'
+import { fileBytesFromStored } from '@/dev/multipart'
+import { mimeFromName } from '@/utils/fileKind'
 import {
+  FileHandle,
   childrenOf,
   isLegalFileName,
   readFilesVOList,
@@ -12,6 +15,7 @@ import {
   type FilesVO,
 } from '@/types/file'
 import { canDownloadInFolder, canWriteInFolder } from '@/utils/driveAccess'
+import { asciiUploadAlias, decodeFileName, isAsciiFileName } from '@/utils/text'
 
 function sortEntries(items: FilesVO[]): FilesVO[] {
   return [...items].sort((a, b) => {
@@ -45,6 +49,7 @@ export function useDriveFiles() {
   const roots = ref<FilesVO[]>([])
   const crumbs = ref<string[]>([])
   const loading = ref(false)
+  const busy = ref(false)
   const message = ref('')
   const nameDraft = ref('')
 
@@ -101,8 +106,10 @@ export function useDriveFiles() {
     crumbs.value = kept
   }
 
-  async function load() {
-    loading.value = true
+  async function load(opts?: { quiet?: boolean }) {
+    if (!opts?.quiet) {
+      loading.value = true
+    }
     message.value = ''
     try {
       const { data } = await getFiles()
@@ -128,7 +135,9 @@ export function useDriveFiles() {
       }
       message.value = '无法连接服务器'
     } finally {
-      loading.value = false
+      if (!opts?.quiet) {
+        loading.value = false
+      }
     }
   }
 
@@ -177,7 +186,7 @@ export function useDriveFiles() {
       message.value = messageForCode(ErrorCode.NO_PERMISSION)
       return
     }
-    loading.value = true
+    busy.value = true
     message.value = ''
     try {
       const data = await run()
@@ -189,7 +198,7 @@ export function useDriveFiles() {
         message.value = messageForCode(data.code)
         return
       }
-      await load()
+      await load({ quiet: true })
     } catch (error) {
       if (isAxiosError(error) && error.response && isResultShape(error.response.data)) {
         message.value = messageForCode(error.response.data.code)
@@ -197,11 +206,14 @@ export function useDriveFiles() {
       }
       message.value = '无法连接服务器'
     } finally {
-      loading.value = false
+      busy.value = false
     }
   }
 
-  async function createFolder() {
+  async function createFolder(explicitName?: string) {
+    if (typeof explicitName === 'string') {
+      nameDraft.value = explicitName
+    }
     if (atRoot.value || !canWrite.value) {
       return
     }
@@ -218,7 +230,10 @@ export function useDriveFiles() {
     }
   }
 
-  async function renameItem(node: FilesVO) {
+  async function renameItem(node: FilesVO, explicitName?: string) {
+    if (typeof explicitName === 'string') {
+      nameDraft.value = explicitName
+    }
     if (atRoot.value || !canWrite.value) {
       return
     }
@@ -256,14 +271,97 @@ export function useDriveFiles() {
       message.value = '请选择要上传的文件'
       return
     }
-    if (!isLegalFileName(file.name)) {
+    if (!isLegalFileName(decodeFileName(file.name))) {
       message.value = messageForCode(ErrorCode.FILE_NAME_ILLEGAL)
       return
     }
     await mutate(async () => {
-      const { data } = await uploadFile(currentDirPath(), file)
+      const finalName = decodeFileName(file.name)
+      if (isAsciiFileName(finalName)) {
+        const { data } = await uploadFile(
+          currentDirPath(),
+          new File([file], finalName, { type: file.type, lastModified: file.lastModified }),
+        )
+        return data
+      }
+      const alias = asciiUploadAlias(finalName)
+      const staged = new File([file], alias, { type: file.type, lastModified: file.lastModified })
+      const uploaded = await uploadFile(currentDirPath(), staged)
+      if (!isResultShape(uploaded.data) || uploaded.data.code !== ErrorCode.OK) {
+        return uploaded.data
+      }
+      const renamed = await renameFile({ path: itemPath(alias), newName: finalName })
+      if (!isResultShape(renamed.data) || renamed.data.code !== ErrorCode.OK) {
+        try {
+          await deleteFile({ path: itemPath(alias) })
+        } catch {
+          /* 把 rename 的错误码留给 mutate */
+        }
+        return renamed.data
+      }
+      return renamed.data
+    })
+  }
+
+  async function moveItem(node: FilesVO, targetDir: string) {
+    if (atRoot.value || !canWrite.value) {
+      return
+    }
+    const dir = targetDir.trim()
+    if (!dir) {
+      message.value = '请填写目标目录'
+      return
+    }
+    await mutate(async () => {
+      const { data } = await moveFile({
+        path: itemPath(node.fileName),
+        targetDir: dir,
+        fileHandle: FileHandle.DEFAULT,
+      })
       return data
     })
+  }
+
+  async function blobForItem(node: FilesVO): Promise<Blob | null> {
+    if (!node.isFile) {
+      return null
+    }
+    if (!canDownload.value) {
+      message.value = messageForCode(ErrorCode.NO_PERMISSION)
+      return null
+    }
+    const { data, headers } = await downloadFile({ path: itemPath(node.fileName) })
+    if (!(data instanceof Blob)) {
+      return null
+    }
+    const type = String(headers['content-type'] ?? '')
+    if (type.includes('json')) {
+      const body = await resultFromBlob(data)
+      message.value = body ? messageForCode(body.code) : '下载失败'
+      return null
+    }
+    const payload = fileBytesFromStored(new Uint8Array(await data.arrayBuffer()))
+    return new Blob([payload], { type: mimeFromName(node.fileName) || type })
+  }
+
+  function usedBytesOf(nodes: FilesVO[]): number {
+    let total = 0
+    for (const node of nodes) {
+      if (node.isFile) {
+        total += node.length || 0
+      }
+      total += usedBytesOf(childrenOf(node))
+    }
+    return total
+  }
+
+  const usedBytes = computed(() => {
+    const room = auth.user ? roots.value.find((node) => node.fileName === String(auth.user?.userId)) : null
+    return room ? usedBytesOf([room]) : usedBytesOf(roots.value)
+  })
+
+  function goInto(name: string) {
+    crumbs.value = [name]
   }
 
   async function downloadItem(node: FilesVO) {
@@ -277,21 +375,17 @@ export function useDriveFiles() {
     loading.value = true
     message.value = ''
     try {
-      const { data, headers } = await downloadFile({ path: itemPath(node.fileName) })
-      if (!(data instanceof Blob)) {
-        message.value = '下载失败'
-        return
-      }
-      const type = String(headers['content-type'] ?? '')
-      if (type.includes('json')) {
-        const body = await resultFromBlob(data)
-        message.value = body ? messageForCode(body.code) : '下载失败'
+      const data = await blobForItem(node)
+      if (!data) {
+        if (!message.value) {
+          message.value = '下载失败'
+        }
         return
       }
       const url = URL.createObjectURL(data)
       const link = document.createElement('a')
       link.href = url
-      link.download = node.fileName
+      link.download = decodeFileName(node.fileName)
       link.click()
       URL.revokeObjectURL(url)
     } catch (error) {
@@ -316,6 +410,7 @@ export function useDriveFiles() {
     roots,
     crumbs,
     loading,
+    busy,
     message,
     nameDraft,
     currentItems,
@@ -334,5 +429,11 @@ export function useDriveFiles() {
     removeItem,
     uploadPicked,
     downloadItem,
+    moveItem,
+    blobForItem,
+    usedBytes,
+    goInto,
+    itemPath,
+    currentDirPath,
   }
 }

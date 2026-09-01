@@ -9,6 +9,7 @@ import type {
   ZipFileDTO,
 } from '@/types/file'
 import type { Result } from '@/types/result'
+import { asUtf8UploadFile } from '@/utils/text'
 
 export function getFiles() {
   return api.get<Result<FilesVO[]>>('/file/getFiles')
@@ -27,12 +28,13 @@ export function renameFile(dto: RenameFileDTO) {
 }
 
 export function uploadFile(path: string, file: File) {
+  const utf8File = asUtf8UploadFile(file)
   const body = new FormData()
   body.append('path', path)
-  body.append('file', file)
+  body.append('fileName', utf8File.name)
+  body.append('file', utf8File, utf8File.name)
   return api.post<Result<null>>('/file/uploadFile', body, {
     timeout: 0,
-    // 表单字段绑不上时，Spring @ModelAttribute 还能从 query 拿到 path
     params: { path },
   })
 }
@@ -50,5 +52,9 @@ export function unzipFile(dto: ZipFileDTO) {
 }
 
 export function moveFile(dto: MoveFileDTO) {
-  return api.post<Result<null>>('/file/moveFile', dto)
+  return api.post<Result<null>>('/file/moveFile', {
+    path: dto.path,
+    targetDir: dto.targetDir,
+    fileHandle: dto.fileHandle,
+  })
 }

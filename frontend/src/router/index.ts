@@ -8,25 +8,29 @@ const routes: RouteRecordRaw[] = [
     path: '/register',
     name: 'register',
     component: Register,
-    meta: { guestOnly: true },
+    meta: { guestOnly: true, hideChrome: true },
   },
   {
     path: '/login',
     name: 'login',
     component: () => import('@/views/auth/Login.vue'),
-    meta: { guestOnly: true },
+    meta: { guestOnly: true, hideChrome: true },
   },
   {
     path: '/drive',
     name: 'drive',
-    component: () => import('@/views/drive/Home.vue'),
-    meta: { requiresAuth: true },
+    component: () => import('@/views/drive/CloudDrive.vue'),
+    meta: { requiresAuth: true, hideChrome: true },
+  },
+  {
+    path: '/drive/files',
+    redirect: { name: 'drive' },
   },
   {
     path: '/drive/settings',
     name: 'drive-settings',
     component: () => import('@/views/drive/Settings.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, hideChrome: true },
   },
   {
     path: '/admin',
@@ -37,7 +41,7 @@ const routes: RouteRecordRaw[] = [
     path: '/admin/invitations',
     name: 'admin-invitations',
     component: () => import('@/views/admin/Invitations.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, hideChrome: true },
   },
 ]
 

@@ -31,7 +31,7 @@
 import { computed, ref } from 'vue'
 import { isAxiosError } from 'axios'
 import { useRouter } from 'vue-router'
-import { login, register } from '@/api/auth'
+import { login, logout, register } from '@/api/auth'
 import { creatInviteCode } from '@/api/invitations'
 import { downloadFile, getFiles, uploadFile } from '@/api/files'
 import { useApiMode } from '@/composables/useApiMode'
@@ -146,6 +146,10 @@ async function runSmoke() {
       const downOk =
         blob instanceof Blob && !String(headers['content-type'] ?? '').includes('json') && blob.size > 0
       lines.push(downOk ? '通过 — 下载返回文件流' : '失败 — 下载')
+
+      const { data: logoutBody } = await logout()
+      const logoutOk = isResultOk(logoutBody)
+      lines.push(logoutOk ? '通过 — 退出 logout' : '失败 — 退出')
     }
 
     if (mode.value === 'online') {

@@ -76,6 +76,11 @@ describe('Result / DTO 契约', () => {
     expect(messageForCode(ErrorCode.FILE_DUPLICATE)).toBe('存在同名文件')
   })
 
+  it('错误码对照表覆盖 JWT 作废', () => {
+    expect(messageForCode(ErrorCode.BLACKLISTED_JWT)).toBe('登录已失效，请重新登录')
+    expect(ErrorCode.BLACKLISTED_JWT).toBe(10013)
+  })
+
   it('缺少 token 不算 LoginVO', () => {
     expect(readLoginVO({ userId: 1, name: 'alice', isAdmin: false })).toBeNull()
     expect(describeResult({ code: 1, data: { userId: 1, name: 'alice', isAdmin: false } })).toMatch(

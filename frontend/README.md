@@ -1,4 +1,10 @@
-# 前端（Vue 3 + Vite + TS）
+# frontend
 
-开发：`npm install` 后 `npm run dev`（默认 http://localhost:5173 ）。
-目标与进度见仓库根目录本地文件 `前端开发.md`（不入库）。
+Cloud Speicher 的浏览器端。产品说明见仓库根目录 [README.md](../README.md)。
+
+```bash
+npm install
+npm run dev
+```
+
+默认 http://localhost:5173 。本机目标与进度在仓库根目录的 `前端开发.md`（不入库）。

@@ -1,4 +1,4 @@
-/** 文件树节点。Java JSON：fileName / length / lastModified / filesVOS / is_file */
+import { normalizeFileName } from '@/utils/text'
 
 export interface FilesVO {
   filesVOS: FilesVO[] | null
@@ -58,7 +58,8 @@ export function isLegalFileName(name: string): boolean {
       name !== '.' &&
       name !== '..' &&
       !name.includes('/') &&
-      !name.includes('\\'),
+      !name.includes('\\') &&
+      !/[\u0000-\u001f]/.test(name),
   )
 }
 
@@ -99,7 +100,7 @@ export function readFilesVO(data: unknown): FilesVO | null {
       filesVOS.push(vo)
     }
   }
-  return { filesVOS, fileName: row.fileName, length, lastModified, isFile }
+  return { filesVOS, fileName: normalizeFileName(row.fileName), length, lastModified, isFile }
 }
 
 export function readFilesVOList(data: unknown): FilesVO[] | null {

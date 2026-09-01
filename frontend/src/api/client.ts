@@ -6,7 +6,11 @@ export const SESSION_KEY = 'loginVO'
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
-  headers: { 'Content-Type': 'application/json' },
+  headers: {
+    'Content-Type': 'application/json; charset=UTF-8',
+    Accept: 'application/json',
+    'Accept-Charset': 'UTF-8',
+  },
   timeout: 25000,
 })
 
@@ -29,13 +33,12 @@ function readToken(): string {
   }
 }
 
-function isNotLogin(data: unknown): boolean {
-  return Boolean(
-    data &&
-      typeof data === 'object' &&
-      'code' in data &&
-      (data as { code?: number }).code === ErrorCode.NOT_LOGIN,
-  )
+function isSessionDead(data: unknown): boolean {
+  if (!data || typeof data !== 'object' || !('code' in data)) {
+    return false
+  }
+  const code = (data as { code?: number }).code
+  return code === ErrorCode.NOT_LOGIN || code === ErrorCode.BLACKLISTED_JWT
 }
 
 function kickToLogin() {
@@ -71,14 +74,14 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => {
     const url = response.config.url ?? ''
-    if (!isNoJwtUrl(url) && isNotLogin(response.data)) {
+    if (!isNoJwtUrl(url) && isSessionDead(response.data)) {
       kickToLogin()
     }
     return response
   },
   (error) => {
     const url = axios.isAxiosError(error) ? (error.config?.url ?? '') : ''
-    if (axios.isAxiosError(error) && !isNoJwtUrl(url) && isNotLogin(error.response?.data)) {
+    if (axios.isAxiosError(error) && !isNoJwtUrl(url) && isSessionDead(error.response?.data)) {
       kickToLogin()
     }
     return Promise.reject(error)

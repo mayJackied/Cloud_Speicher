@@ -19,3 +19,8 @@ export function login(dto: LoginDTO) {
 export function deleteUser() {
   return api.post<Result<null>>('/user/delete')
 }
+
+/** Java 是 GET；conteact 写成了 POST，以源码为准。 */
+export function logout() {
+  return api.get<Result<null>>('/user/logout')
+}

@@ -1,26 +1,30 @@
 <template>
-  <main>
-    <h1>登录</h1>
-    <p v-if="message">{{ message }}</p>
-    <form @submit.prevent="onSubmit">
-      <p>
-        <label>
-          用户名
-          <input v-model="name" name="name" autocomplete="username" />
-        </label>
-      </p>
-      <p>
-        <label>
-          密码
-          <input v-model="password" type="password" name="password" autocomplete="current-password" />
-        </label>
-      </p>
-      <p>
-        <button type="submit" :disabled="loading">{{ loading ? '提交中…' : '登录' }}</button>
-      </p>
-    </form>
-    <p><router-link to="/register">去注册</router-link></p>
-  </main>
+  <ArchiveFrame>
+    <main class="arc-page">
+      <p class="arc-kicker">{{ t('auth.kicker') }}</p>
+      <h1>{{ t('auth.signIn') }}</h1>
+      <p v-if="message">{{ message }}</p>
+      <form @submit.prevent="onSubmit">
+        <p>
+          <label>
+            {{ t('auth.userName') }}
+            <input v-model="name" name="name" autocomplete="username" />
+          </label>
+        </p>
+        <p>
+          <label>
+            {{ t('auth.password') }}
+            <input v-model="password" type="password" name="password" autocomplete="current-password" />
+          </label>
+        </p>
+        <p>
+          <button type="submit" :disabled="loading">{{ loading ? t('auth.submitting') : t('auth.submit') }}</button>
+        </p>
+      </form>
+      <p><router-link to="/register">{{ t('auth.requestAccess') }}</router-link></p>
+      <LocaleSwitch />
+    </main>
+  </ArchiveFrame>
 </template>
 
 <script setup lang="ts">
@@ -28,6 +32,9 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { isAxiosError } from 'axios'
 import { login } from '@/api/auth'
+import ArchiveFrame from '@/components/drive/ArchiveFrame.vue'
+import LocaleSwitch from '@/components/LocaleSwitch.vue'
+import { useI18n } from '@/composables/useI18n'
 import { describeResult, isResultShape, readLoginVO } from '@/dev/contract'
 import { useAuthStore } from '@/stores/auth'
 import { ErrorCode, messageForCode } from '@/types/errorCode'
@@ -38,6 +45,7 @@ const message = ref('')
 const loading = ref(false)
 const auth = useAuthStore()
 const router = useRouter()
+const { t } = useI18n()
 
 async function onSubmit() {
   const dto = {
@@ -45,7 +53,7 @@ async function onSubmit() {
     password: password.value,
   }
   if (!dto.name || !dto.password) {
-    message.value = '请填写用户名和密码'
+    message.value = t('auth.fillAll')
     return
   }
 
@@ -71,10 +79,12 @@ async function onSubmit() {
   } catch (error) {
     if (isAxiosError(error) && error.response) {
       const body = error.response.data
-      message.value = isResultShape(body) ? messageForCode(body.code) : `登录失败（HTTP ${error.response.status}）`
+      message.value = isResultShape(body)
+        ? messageForCode(body.code)
+        : t('auth.loginHttp', { status: error.response.status })
       return
     }
-    message.value = '无法连接服务器（离线 mock 未生效，或在线 FRP 不通）'
+    message.value = t('auth.offline')
   } finally {
     loading.value = false
   }

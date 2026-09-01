@@ -34,9 +34,17 @@ describe('FilesVO / path', () => {
 
   it('文件名规则', () => {
     expect(isLegalFileName('notes')).toBe(true)
+    expect(isLegalFileName('前端开发.md')).toBe(true)
+    expect(isLegalFileName('写真.jpg')).toBe(true)
     expect(isLegalFileName('')).toBe(false)
     expect(isLegalFileName('   ')).toBe(false)
     expect(isLegalFileName('a/b')).toBe(false)
     expect(isLegalFileName('..')).toBe(false)
+  })
+
+  it('乱码文件名原样保留，操作 path 仍对得上服务器', () => {
+    const raw = 'é£Žæ™¯.png'
+    const vo = readFilesVO({ fileName: raw, length: 1, lastModified: 0, is_file: true, filesVOS: null })
+    expect(vo?.fileName).toBe(raw)
   })
 })

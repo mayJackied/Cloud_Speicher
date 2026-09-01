@@ -1,0 +1,148 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@600;700&display=swap');
+
+:root {
+  --arc-canvas: #06131b;
+  --arc-canvas-2: #081923;
+  --arc-canvas-3: #0a1c26;
+  --arc-ink: #ebf4f6;
+  --arc-chem: #4ca6a4;
+  --arc-lime: #b7f53a;
+  --arc-card: rgba(26, 59, 78, 0.4);
+  --arc-line: rgba(235, 244, 246, 0.16);
+  --arc-mono: 'IBM Plex Mono', 'Sarasa Gothic SC', 'Microsoft YaHei UI', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+  --arc-display: 'Natto', 'IBM Plex Sans Condensed', 'Microsoft YaHei UI', 'PingFang SC', sans-serif;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  height: 100%;
+  background: var(--arc-canvas);
+  color: var(--arc-ink);
+  color-scheme: dark;
+}
+
+body {
+  overflow: auto;
+}
+
+html.arc-shell,
+html.arc-shell body {
+  overflow: hidden;
+}
+
+select,
+option {
+  color-scheme: dark;
+  background-color: var(--arc-canvas-2);
+  color: var(--arc-ink);
+}
+
+.arc-page {
+  position: relative;
+  z-index: 3;
+  box-sizing: border-box;
+  width: min(28rem, calc(100% - 3rem));
+  margin: 0 auto;
+  padding: 18vh 0 4rem;
+}
+
+.arc-page h1 {
+  margin: 0.35rem 0 1.25rem;
+  font-family: var(--arc-display);
+  font-size: clamp(1.4rem, 3vw, 2rem);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.arc-page p,
+.arc-page label,
+.arc-page a,
+.arc-page button {
+  font-family: var(--arc-mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+.arc-page a {
+  color: var(--arc-chem);
+}
+
+.arc-page input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 0.35rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--arc-line);
+  border-radius: 0;
+  outline: none;
+  background: transparent;
+  color: var(--arc-ink);
+  font: inherit;
+}
+
+.arc-page input:focus {
+  border-color: var(--arc-chem);
+}
+
+.arc-page .arc-hint {
+  margin: 0.3rem 0 0.85rem;
+  min-height: 1.1em;
+  color: rgb(76 166 164 / 72%);
+  font-family: var(--arc-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.arc-page .arc-hint.is-live {
+  color: var(--arc-chem);
+}
+
+.arc-page .arc-hint.is-ok {
+  color: rgb(235 244 246 / 28%);
+}
+
+.arc-page button {
+  padding: 0.5rem 0.8rem;
+  border: 1px solid var(--arc-line);
+  background: transparent;
+  color: var(--arc-ink);
+  cursor: pointer;
+}
+
+.arc-page button:hover {
+  border-color: var(--arc-lime);
+  color: var(--arc-lime);
+}
+
+.arc-page .arc-langs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  margin: 1.35rem 0 0;
+}
+
+.arc-page .arc-langs button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: rgb(235 244 246 / 42%);
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+
+.arc-page .arc-langs button.is-on {
+  color: var(--arc-lime);
+}
+
+.arc-kicker {
+  margin: 0;
+  font-family: var(--arc-mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: var(--arc-chem);
+}
