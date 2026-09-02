@@ -30,6 +30,8 @@ my:
     file:
       path: "../files"
       publicPath: "../files/public"
+      recycleBinName: "recycle_bin"
+      retainTime: 7 #Days
 
     signKey: "reisen"
     expire: 30 #Days

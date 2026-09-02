@@ -24,4 +24,5 @@ public final class ErrorCode {
     public static final Integer FILE_NOT_FOUND = 20004;
     public static final Integer FILE_ILLEGAL = 20005;
     public static final Integer FILE_DUPLICATE = 20006;
+    public static final Integer BIN_FILE_NOT_ALLOWED = 20007;
 }

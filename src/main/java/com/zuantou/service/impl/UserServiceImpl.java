@@ -3,6 +3,9 @@ package com.zuantou.service.impl;
 import com.zuantou.common.jwt.JwtBlacklistMap;
 import com.zuantou.common.properties.ErrorCode;
 import com.zuantou.common.properties.MyValFileProperties;
+import com.zuantou.common.properties.MyValProperties;
+import com.zuantou.mapper.JwtBlacklistMapper;
+import com.zuantou.pojo.JwtBlacklist;
 import com.zuantou.pojo.dto.CheckUserNameDTO;
 import com.zuantou.pojo.vo.CheckUserNameVO;
 import com.zuantou.common.jwt.JwtUtils;
@@ -31,6 +34,8 @@ public class UserServiceImpl implements UserService {
     final JwtUtils jwtUtils;
     final MyValFileProperties fileProperties;
     final JwtBlacklistMap jwtBlacklistMap;
+    final JwtBlacklistMapper jwtBlacklistMapper;
+    final MyValProperties properties;
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
@@ -45,7 +50,7 @@ public class UserServiceImpl implements UserService {
     @Override
     public Result<CreatInviteCodeVO> creatInviteCode() {
         User user = userMapper.selectById(UserContext.getUserId());
-        if (user == null){
+        if (user == null) {
             return Result.error(ErrorCode.USER_NOT_FOUND);
         }
 
@@ -67,7 +72,7 @@ public class UserServiceImpl implements UserService {
         }
 
         if (name.length() < 3 || name.length() > 20) {
-            return Result.error(ErrorCode.USERNAME_LENGTH_INVALID );
+            return Result.error(ErrorCode.USERNAME_LENGTH_INVALID);
         }
 
         if (!name.matches("^[A-Za-z][A-Za-z0-9_]*$")) {
@@ -95,7 +100,7 @@ public class UserServiceImpl implements UserService {
 
         for (InviteCode inviteCode : inviteCodeMapper.selectList(null)) {
             if (inviteCode.getInviteCode().equals(registerDTO.getInviteCode())) {
-                User u = new User(null, passwordEncoder.encode(registerDTO.getPassword()),registerDTO.getName(), false, false);
+                User u = new User(null, passwordEncoder.encode(registerDTO.getPassword()), registerDTO.getName(), false, false);
                 userMapper.insert(u);
 
                 inviteCodeMapper.deleteById(inviteCode.getInviteCode());
@@ -105,7 +110,7 @@ public class UserServiceImpl implements UserService {
 
                 loginVO.setToken(jwtUtils.generateJwt(Map.of("user_id", loginVO.getUserId())));
 
-                File file = new File(fileProperties.getPath()+"/"+u.getUserId());
+                File file = new File(fileProperties.getPath() + "/" + u.getUserId());
                 if (file.mkdir()) {
                     return Result.error(ErrorCode.EXCEPTION);
                 }
@@ -119,7 +124,7 @@ public class UserServiceImpl implements UserService {
     @Override
     public Result<LoginVO> login(LoginDTO loginDTO) {
         User u = userMapper.selectByUserName(loginDTO.getName());
-        if (u == null){
+        if (u == null) {
             return Result.error(ErrorCode.USER_NOT_FOUND);
         }
         if (passwordEncoder.matches(loginDTO.getPassword(), u.getPassword())) {
@@ -149,15 +154,18 @@ public class UserServiceImpl implements UserService {
     }
 
 
-    private void addJwtBlacklist(String blacklistedJwt){
+    private void addJwtBlacklist(String blacklistedJwt) {
         jwtBlacklistMap.addJwtBlacklist(blacklistedJwt);
+        jwtBlacklistMapper.insert(new JwtBlacklist(blacklistedJwt, System.currentTimeMillis() + properties.getExpire() * 24 * 60 * 60 * 1000));
     }
 
-    public UserServiceImpl(UserMapper userMapper, InviteCodeMapper inviteCodeMapper, JwtUtils jwtUtils, MyValFileProperties myValFileProperties, JwtBlacklistMap jwtBlacklistMap) {
+    public UserServiceImpl(UserMapper userMapper, InviteCodeMapper inviteCodeMapper, JwtUtils jwtUtils, MyValFileProperties myValFileProperties, JwtBlacklistMap jwtBlacklistMap, JwtBlacklistMapper jwtBlacklistMapper, MyValProperties properties) {
         this.userMapper = userMapper;
         this.inviteCodeMapper = inviteCodeMapper;
         this.jwtUtils = jwtUtils;
         this.fileProperties = myValFileProperties;
         this.jwtBlacklistMap = jwtBlacklistMap;
+        this.jwtBlacklistMapper = jwtBlacklistMapper;
+        this.properties = properties;
     }
 }

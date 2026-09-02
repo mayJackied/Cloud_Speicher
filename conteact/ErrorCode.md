@@ -26,5 +26,6 @@
 | 20004 | FILE_NOT_FOUND               | 文件不存在                     |
 | 20005 | FILE_ILLEGAL                 | 文件不符合约定                   |
 | 20006 | FILE_DUPLICATE               | 存在同名文件                    |
+| 20007 | BIN_FILE_NOT_ALLOWED         | 不允许对回收站这样操作               |
 
 

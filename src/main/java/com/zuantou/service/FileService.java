@@ -14,6 +14,8 @@ public interface FileService {
 
     Result<Void> deleteFile(DeleteFileDTO deleteFileDTO);
 
+    Result<Void> deleteFiles(List<DeleteFileDTO> deleteFileDTOS);
+
     Result<Void> renameFile(RenameFileDTO renameFileDTO);
 
     Result<Void> uploadFile(UploadFileDTO uploadFileDTO);
@@ -25,4 +27,10 @@ public interface FileService {
     Result<Void> unzip(ZipFileDTO zipFileDTO);
 
     Result<Void> moveFile(MoveFileDTO moveFileDTO);
+
+    Result<Void> deleteBinFile(DeleteFileDTO deleteFileDTO);
+
+    Result<Void> deleteBinAllFiles(DeleteBinAllFilesDTO deleteBinAllFilesDTO);
+
+    Result<Void> restoreFile(DeleteFileDTO deleteFileDTO);
 }

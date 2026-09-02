@@ -1,0 +1,18 @@
+package com.zuantou.pojo;
+
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+@TableName("delete_bin_file_source")
+public class DeleteBinFileSource {
+    private String oldPath;
+    @TableId
+    private String newPath;
+    private Long creatTime;
+}

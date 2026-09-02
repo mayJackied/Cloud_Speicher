@@ -10,4 +10,6 @@ import org.springframework.stereotype.Component;
 public class MyValFileProperties {
     private String path;
     private String publicPath;
+    private String recycleBinName;
+    private Integer retainTime;
 }

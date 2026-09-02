@@ -36,6 +36,11 @@ public class FileController {
         return fileService.deleteFile(deleteFileDTO);
     }
 
+    @PostMapping("/deleteFiles")
+    public Result<Void> deleteFiles(@RequestBody List<DeleteFileDTO> deleteFileDTOS) {
+        return fileService.deleteFiles(deleteFileDTOS);
+    }
+
     @PostMapping("/renameFile")
     @Operation(summary = "rename_file")
     public Result<Void> renameFile(@RequestBody RenameFileDTO renameFileDTO) {
@@ -64,6 +69,18 @@ public class FileController {
     @PostMapping("/moveFile")
     public Result<Void> moveFile(@RequestBody MoveFileDTO moveFileDTO){
         return fileService.moveFile(moveFileDTO);
+    }
+   @PostMapping("/deleteBinFile")
+    public Result<Void> deleteBinFile(@RequestBody DeleteFileDTO deleteFileDTO){
+        return fileService.deleteBinFile(deleteFileDTO);
+    }
+   @PostMapping("/deleteBinAllFiles")
+    public Result<Void> deleteBinAllFiles(@RequestBody DeleteBinAllFilesDTO deleteBinAllFilesDTO){
+        return fileService.deleteBinAllFiles(deleteBinAllFilesDTO);
+    }
+   @PostMapping("/restoreFile")
+    public Result<Void> restoreFile(@RequestBody DeleteFileDTO deleteFileDTO){
+        return fileService.restoreFile(deleteFileDTO);
     }
 
     public FileController(FileService fileService) {
