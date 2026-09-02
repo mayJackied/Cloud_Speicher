@@ -17,3 +17,5 @@ DownloadFileDTO { String path }
 ZipFileDTO { String path; String targetDir } Tipp: targetDir 要求是个文件夹; 空字符串为默认路径: 原文件的父级路径
 
 MoveFileDTO { String path; String targetDir; Integer fileHandle } Tipp: targetDir 禁止为空; fileHandle 是如果存在同名文件处理方式; 0 默认值, 不处理; 1 替换; 2 忽略(前端一般不发送这个请求)
+
+DeleteBinAllFilesDTO { Integer pathType } Tipp: PUBLIC_PATH = 3; USER_PATH = 4

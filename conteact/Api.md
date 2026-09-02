@@ -76,4 +76,16 @@ DTO: ZipFileDTO zipFileDTO
 post: /api/file/moveFile
 DTO: MoveFileDTO moveFileDTO
 
+*delete_bin_file*
+post: /api/file/deleteBinFile
+DTO: DeleteFileDTO deleteFileDTO
+
+*deleteBinAllFiles*
+post: /api/file/deleteBinAllFiles
+DTO: DeleteBinAllFilesDTO deleteBinAllFilesDTO
+
+*restoreFile*
+post: /api/file/restoreFile
+DTO: DeleteFileDTO deleteFileDTO
+
 }
