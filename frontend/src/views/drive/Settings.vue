@@ -12,6 +12,9 @@
         <button type="button" :class="{ 'is-on': tab === 'display' }" @click="tab = 'display'">
           {{ t('settings.display') }}
         </button>
+        <button type="button" :class="{ 'is-on': tab === 'connection' }" @click="tab = 'connection'">
+          {{ t('settings.connection') }}
+        </button>
         <button type="button" :class="{ 'is-on': tab === 'account' }" @click="tab = 'account'">
           {{ t('settings.account') }}
         </button>
@@ -74,6 +77,19 @@
           </div>
         </section>
 
+        <section v-else-if="tab === 'connection'">
+          <p class="set__lead">{{ t('settings.connectionHint') }}</p>
+          <p class="set__lead">{{ t('drive.sync') }}: {{ syncLabel }} · {{ pillLabel }}</p>
+          <div class="set__langs">
+            <button type="button" :class="{ 'is-on': apiMode === 'offline' }" @click="setMode('offline')">
+              {{ t('settings.connectionOffline') }}
+            </button>
+            <button type="button" :class="{ 'is-on': apiMode === 'online' }" @click="setMode('online')">
+              {{ t('settings.connectionOnline') }}
+            </button>
+          </div>
+        </section>
+
         <section v-else class="set__danger">
           <p>{{ t('settings.operator') }}: {{ auth.user?.name }} / ID {{ auth.user?.userId }}{{ auth.user?.isAdmin ? ' / ADMIN' : '' }}</p>
           <p class="set__lead">{{ t('settings.deleteLead') }}</p>
@@ -99,6 +115,7 @@ import { useRouter } from 'vue-router'
 import { isAxiosError } from 'axios'
 import ArchiveFrame from '@/components/drive/ArchiveFrame.vue'
 import { deleteUser } from '@/api/auth'
+import { useApiLink } from '@/composables/useApiLink'
 import { useI18n } from '@/composables/useI18n'
 import { LOCALES } from '@/i18n/messages'
 import { isResultShape } from '@/dev/contract'
@@ -106,12 +123,13 @@ import { useAuthStore } from '@/stores/auth'
 import { usePrefsStore } from '@/stores/prefs'
 import { ErrorCode, messageForCode } from '@/types/errorCode'
 
-type Tab = 'about' | 'language' | 'display' | 'account'
+type Tab = 'about' | 'language' | 'display' | 'connection' | 'account'
 
 const auth = useAuthStore()
 const prefs = usePrefsStore()
 const router = useRouter()
 const { t, locale, setLocale } = useI18n()
+const { mode: apiMode, setMode, syncLabel, pillLabel } = useApiLink()
 const tab = ref<Tab>('about')
 const confirmName = ref('')
 const loading = ref(false)

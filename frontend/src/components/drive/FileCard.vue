@@ -2,11 +2,17 @@
   <button
     type="button"
     class="card"
-    :class="{ 'is-on': selected }"
+    :class="{ 'is-on': selected, 'is-drop': droppable }"
+    :draggable="draggable"
     @click="$emit('select')"
     @dblclick="$emit('open')"
     @contextmenu.prevent="$emit('menu', $event)"
     @mouseenter="$emit('hover')"
+    @dragstart="onDragStart"
+    @dragend="$emit('dragend')"
+    @dragover="onDragOver"
+    @dragleave="onDragLeave"
+    @drop="onDrop"
   >
     <div class="card__stage">
       <CyanotypeMedia
@@ -51,13 +57,18 @@ const props = defineProps<{
   previewSrc?: string | null
   label: string
   thumbs?: boolean
+  draggable?: boolean
+  droppable?: boolean
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   select: []
   open: []
   hover: []
   menu: [event: MouseEvent]
+  dragstart: [event: DragEvent]
+  dragend: []
+  dropin: []
 }>()
 
 const kind = computed<FileKind>(() => kindOf(props.item))
@@ -66,7 +77,40 @@ const showThumb = computed(
 )
 const displayName = computed(() => archivalDisplayName(props.label))
 const sizeText = computed(() => (props.item.isFile ? formatBytes(props.item.length) : 'DIR'))
-</script>
+
+function onDragStart(event: DragEvent) {
+  if (!props.draggable) {
+    event.preventDefault()
+    return
+  }
+  event.dataTransfer?.setData('text/plain', props.item.fileName)
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+  }
+  emit('dragstart', event)
+}
+
+function onDragOver(event: DragEvent) {
+  if (!props.droppable) {
+    return
+  }
+  event.preventDefault()
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'move'
+  }
+}
+
+function onDragLeave() {
+  /* class 由父级 droppable 控制 */
+}
+
+function onDrop(event: DragEvent) {
+  if (!props.droppable) {
+    return
+  }
+  event.preventDefault()
+  emit('dropin')
+}</script>
 
 <style scoped>
 .card {
@@ -85,7 +129,8 @@ const sizeText = computed(() => (props.item.isFile ? formatBytes(props.item.leng
 }
 
 .card:hover,
-.card.is-on {
+.card.is-on,
+.card.is-drop {
   border-color: var(--arc-lime);
 }
 

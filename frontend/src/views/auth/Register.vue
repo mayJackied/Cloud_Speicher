@@ -55,6 +55,8 @@
         </p>
       </form>
       <p><router-link to="/login">{{ t('auth.goSignIn') }}</router-link></p>
+      <p class="arc-hint">{{ t('auth.modeHint') }}</p>
+      <ApiModeSwitch />
       <LocaleSwitch />
     </main>
   </ArchiveFrame>
@@ -65,6 +67,7 @@ import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { isAxiosError } from 'axios'
 import { checkUserName, register } from '@/api/auth'
+import ApiModeSwitch from '@/components/ApiModeSwitch.vue'
 import ArchiveFrame from '@/components/drive/ArchiveFrame.vue'
 import LocaleSwitch from '@/components/LocaleSwitch.vue'
 import { useI18n } from '@/composables/useI18n'

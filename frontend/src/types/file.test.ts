@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isLegalFileName, readFilesVO, readFilesVOList, toServerPath } from './file'
+import { isLegalFileName, readFilesVO, readFilesVOList, toServerPath, bytesOfNode } from './file'
 
 describe('FilesVO / path', () => {
   it('is_file 映射成 isFile，并保留子树', () => {
@@ -46,5 +46,26 @@ describe('FilesVO / path', () => {
     const raw = 'é£Žæ™¯.png'
     const vo = readFilesVO({ fileName: raw, length: 1, lastModified: 0, is_file: true, filesVOS: null })
     expect(vo?.fileName).toBe(raw)
+  })
+
+  it('文件夹大小是子文件合计，不是把类型写进大小', () => {
+    const vo = readFilesVO({
+      fileName: 'TYPE',
+      length: 0,
+      lastModified: 1,
+      is_file: false,
+      filesVOS: [
+        { fileName: 'a.txt', length: 1200, lastModified: 2, is_file: true, filesVOS: null },
+        {
+          fileName: 'nested',
+          length: 0,
+          lastModified: 3,
+          is_file: false,
+          filesVOS: [{ fileName: 'b.bin', length: 300, lastModified: 4, is_file: true, filesVOS: null }],
+        },
+      ],
+    })
+    expect(vo && bytesOfNode(vo)).toBe(1500)
+    expect(bytesOfNode({ fileName: 'empty', length: 0, lastModified: 0, isFile: false, filesVOS: [] })).toBe(0)
   })
 })

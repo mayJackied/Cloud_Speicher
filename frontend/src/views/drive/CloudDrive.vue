@@ -1,27 +1,41 @@
 <template>
-  <ArchiveFrame
-    fill
-    :clock="false"
-    :drop="dragging"
-    @dragenter.prevent="dragging = true"
-    @dragover.prevent="dragging = true"
-    @dragleave="onDragLeave"
-    @drop.prevent="onDrop"
-  >
+  <ArchiveFrame fill :clock="false">
     <div class="arc">
     <aside class="arc__side">
       <p class="arc__brand">ARCHIVAL_CLOUD</p>
       <nav class="arc__nav">
-        <button type="button" :class="{ 'is-on': channel === 'mine' }" @click="openMine">{{ t('drive.myDrive') }}</button>
-        <button type="button" :class="{ 'is-on': channel === 'public' }" @click="openPublic">{{ t('drive.public') }}</button>
+        <button
+          type="button"
+          :class="{ 'is-on': channel === 'mine', 'is-drop': dropSlot === 'mine' }"
+          @click="openMine"
+          @dragover="onSlotOver('mine', $event)"
+          @dragleave="onSlotLeave('mine')"
+          @drop.prevent="onDropMine"
+        >{{ t('drive.myDrive') }}</button>
+        <button
+          type="button"
+          :class="{ 'is-on': channel === 'public', 'is-drop': dropSlot === 'public' }"
+          @click="openPublic"
+          @dragover="onSlotOver('public', $event)"
+          @dragleave="onSlotLeave('public')"
+          @drop.prevent="onDropPublic"
+        >{{ t('drive.public') }}</button>
         <button type="button" :class="{ 'is-on': channel === 'root' }" @click="openRoot">{{ t('drive.root') }}</button>
         <button type="button" class="is-off" @click="noteOffline(t('drive.recent'))">{{ t('drive.recent') }}</button>
         <button type="button" class="is-off" @click="noteOffline(t('drive.starred'))">{{ t('drive.starred') }}</button>
         <button type="button" class="is-off" @click="noteOffline(t('drive.shared'))">{{ t('drive.shared') }}</button>
-        <button type="button" class="is-off" @click="noteOffline(t('drive.trash'))">{{ t('drive.trash') }}</button>
+        <button
+          type="button"
+          class="is-off"
+          :class="{ 'is-drop': dropSlot === 'trash' }"
+          @click="noteOffline(t('drive.trash'))"
+          @dragover="onSlotOver('trash', $event)"
+          @dragleave="onSlotLeave('trash')"
+          @drop.prevent="onDropTrash"
+        >{{ t('drive.trash') }}</button>
       </nav>
       <div class="arc__store">
-        <p>{{ t('drive.storage') }}</p>
+        <p>{{ t('drive.storageUsed') }}</p>
         <p class="arc__store-num font-natto">{{ usedLabel }} <span>/ 100 GB</span></p>
         <div class="arc__bar"><i :style="{ width: usedPct + '%' }" /></div>
         <p>{{ t('drive.storageLoad') }}: {{ usedPct < 80 ? t('drive.optimal') : t('drive.high') }}</p>
@@ -41,16 +55,29 @@
             <button type="button" @click="openRoot">MY_ARCHIVE</button>
             <template v-for="(name, index) in crumbs" :key="`${index}-${name}`">
               <span>//</span>
-              <button type="button" @click="jumpTo(index)">{{ crumbLabel(name) }}</button>
+              <button
+                type="button"
+                :class="{ 'is-drop': dropSlot === `crumb:${index}` }"
+                @click="jumpTo(index)"
+                @dragover="onSlotOver(`crumb:${index}`, $event)"
+                @dragleave="onSlotLeave(`crumb:${index}`)"
+                @drop.prevent="onDropCrumb(index)"
+              >{{ crumbLabel(name) }}</button>
             </template>
           </h1>
         </div>
         <div class="arc__head-end">
           <Timeboard />
           <div class="arc__status">
-            <span>{{ t('drive.storage') }} <strong>{{ usedLabel }} / 100 GB</strong></span>
-            <span>{{ t('drive.sync') }}: <strong class="is-lime">{{ t('drive.stable') }}</strong></span>
-            <span class="arc__pill">{{ t('drive.online') }}</span>
+            <span class="arc__stat">
+              <em>{{ t('drive.storageUsed') }}</em>
+              <strong class="arc__stat-num">{{ usedLabel }} / 100 GB</strong>
+            </span>
+            <span class="arc__stat">
+              <em>{{ t('drive.sync') }}</em>
+              <strong :class="syncClass">{{ syncLabel }}</strong>
+            </span>
+            <span class="arc__pill" :class="pillClass">[{{ pillLabel }}]</span>
           </div>
         </div>
       </header>
@@ -98,8 +125,23 @@
       </p>
 
       <div class="arc__workspace">
-        <section class="arc__browser" :class="{ 'is-busy': busy }" @click.self="selected = null">
-          <div v-if="view === 'grid' && (!loading || roots.length > 0)" class="arc__grid-view">
+        <section
+          class="arc__browser"
+          :class="{ 'is-busy': busy, 'is-expose': exposing }"
+          @click.self="selected = null"
+          @dragenter="onBrowserDragEnter"
+          @dragover="onBrowserDragOver"
+          @dragleave="onBrowserDragLeave"
+          @drop.prevent="onBrowserDrop"
+        >
+          <div v-if="exposing" class="arc__expose" aria-hidden="true">
+            <p class="arc__expose-kicker">{{ t('drive.dropExpose') }}</p>
+            <p>{{ t('drive.dropExposeHint') }}</p>
+            <i class="arc__expose-scan" />
+          </div>
+          <p v-if="loading && roots.length === 0" class="arc__empty">{{ t('drive.loading') }}</p>
+          <ConcreteVoid v-else-if="visibleItems.length === 0" :kind="searching ? 'search' : 'empty'" />
+          <div v-else-if="view === 'grid'" class="arc__grid-view">
             <FileCard
               v-for="item in visibleItems"
               :key="item.fileName"
@@ -108,10 +150,15 @@
               :selected="selected?.fileName === item.fileName"
               :preview-src="previews[item.fileName]"
               :thumbs="prefs.thumbnails"
+              :draggable="canDragItems"
+              :droppable="canDropInto(item)"
               @select="select(item)"
               @open="openItem(item)"
               @hover="void warmPreview(item)"
               @menu="(event) => openMenu(event, item)"
+              @dragstart="onItemDragStart(item)"
+              @dragend="onItemDragEnd"
+              @dropin="onDropIntoFolder(item)"
             />
             <button
               v-if="canWrite && !atRoot"
@@ -123,9 +170,7 @@
               {{ t('drive.append') }}
             </button>
           </div>
-          <p v-else-if="loading" class="arc__empty">{{ t('drive.loading') }}</p>
-          <p v-else-if="visibleItems.length === 0" class="arc__empty">{{ t('drive.emptyDir') }}</p>
-          <table v-else-if="view === 'list'" class="arc__list">
+          <table v-else class="arc__list">
             <thead>
               <tr>
                 <th>{{ t('drive.name') }}</th>
@@ -138,14 +183,19 @@
               <tr
                 v-for="item in visibleItems"
                 :key="item.fileName"
-                :class="{ 'is-on': selected?.fileName === item.fileName }"
+                :class="{ 'is-on': selected?.fileName === item.fileName, 'is-drop': canDropInto(item) }"
+                :draggable="canDragItems"
                 @click="select(item)"
                 @dblclick="openItem(item)"
                 @contextmenu.prevent="openMenu($event, item)"
+                @dragstart="onItemDragStart(item)"
+                @dragend="onItemDragEnd"
+                @dragover="canDropInto(item) && onSlotOver(`folder:${item.fileName}`, $event)"
+                @drop.prevent="onDropIntoFolder(item)"
               >
                 <td>{{ archivalDisplayName(labelOf(item.fileName)) }}</td>
                 <td>{{ typeLabel(kindOf(item), item.fileName) }}</td>
-                <td>{{ item.isFile ? formatBytes(item.length) : '—' }}</td>
+                <td>{{ formatBytes(bytesOfNode(item)) }}</td>
                 <td>{{ formatStamp(item.lastModified) }}</td>
               </tr>
             </tbody>
@@ -175,10 +225,10 @@
             <dl class="arc__meta">
               <div><dt>{{ t('drive.name') }}</dt><dd>{{ archivalDisplayName(selected.fileName) }}</dd></div>
               <div><dt>{{ t('drive.type') }}</dt><dd>{{ typeLabel(kindOf(selected), selected.fileName) }}</dd></div>
-              <div><dt>{{ t('drive.size') }}</dt><dd>{{ selected.isFile ? formatBytes(selected.length) : t('drive.directory') }}</dd></div>
+              <div><dt>{{ t('drive.size') }}</dt><dd>{{ formatBytes(bytesOfNode(selected)) }}</dd></div>
               <div><dt>{{ t('drive.modified') }}</dt><dd>{{ formatStamp(selected.lastModified) }}</dd></div>
               <div><dt>{{ t('drive.location') }}</dt><dd>{{ locationLabel }}</dd></div>
-              <div><dt>{{ t('drive.sync') }}</dt><dd>{{ t('drive.stable') }}</dd></div>
+              <div><dt>{{ t('drive.sync') }}</dt><dd>{{ syncLabel }}</dd></div>
             </dl>
           </template>
           <p v-else class="arc__empty">{{ t('drive.noFile') }}</p>
@@ -230,24 +280,51 @@ import { useRouter } from 'vue-router'
 import { logout } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
 import { usePrefsStore } from '@/stores/prefs'
+import { useApiLink } from '@/composables/useApiLink'
 import { useDriveFiles } from '@/composables/useDriveFiles'
 import { useI18n } from '@/composables/useI18n'
-import type { FilesVO } from '@/types/file'
+import { bytesOfNode, toServerPath, type FilesVO } from '@/types/file'
+import { ErrorCode, messageForCode } from '@/types/errorCode'
 import { kindOf, needsPosterFrame, typeLabel } from '@/utils/fileKind'
 import { formatBytes, formatStamp } from '@/utils/formatFile'
 import { stillFromBlob } from '@/utils/posterFrame'
 import { archivalDisplayName, decodeFileName } from '@/utils/text'
+import { canWriteInFolder } from '@/utils/driveAccess'
+import { isFileDrag, isForbiddenMoveDest, isSameFolder } from '@/utils/moveDest'
 import FileCard from '@/components/drive/FileCard.vue'
 import CyanotypeMedia from '@/components/drive/CyanotypeMedia.vue'
 import ArchiveFrame from '@/components/drive/ArchiveFrame.vue'
 import FolderPicker from '@/components/drive/FolderPicker.vue'
 import Timeboard from '@/components/drive/Timeboard.vue'
+import ConcreteVoid from '@/components/drive/ConcreteVoid.vue'
 
 type Channel = 'mine' | 'public' | 'root'
 type SortKey = 'name' | 'type' | 'size' | 'time'
 type DialogState = { title: string; field: boolean; value: string; kind: 'create' | 'rename' | 'delete' }
 
 const { t, locale } = useI18n()
+const { status: linkStatus, syncLabel, pillLabel } = useApiLink()
+const syncClass = computed(() => {
+  if (linkStatus.value === 'online') {
+    return 'is-lime'
+  }
+  if (linkStatus.value === 'unreachable') {
+    return 'is-warn'
+  }
+  return 'is-mute'
+})
+const pillClass = computed(() => {
+  if (linkStatus.value === 'online') {
+    return 'is-up'
+  }
+  if (linkStatus.value === 'unreachable') {
+    return 'is-down'
+  }
+  if (linkStatus.value === 'checking') {
+    return 'is-wait'
+  }
+  return 'is-local'
+})
 const sortOptions = computed(() => [
   { value: 'name' as const, label: t('drive.sortName') },
   { value: 'type' as const, label: t('drive.sortType') },
@@ -260,12 +337,15 @@ const auth = useAuthStore()
 const router = useRouter()
 const fileInput = ref<HTMLInputElement | null>(null)
 const query = ref('')
+const searching = computed(() => query.value.trim().length > 0)
 const sortKey = ref<SortKey>('name')
 const sortOpen = ref(false)
 const view = ref<'grid' | 'list'>('grid')
 const selected = ref<FilesVO | null>(null)
 const reveal = ref(true)
-const dragging = ref(false)
+const exposing = ref(false)
+const dragNode = ref<FilesVO | null>(null)
+const dropSlot = ref('')
 const offlineNote = ref('')
 const channel = ref<Channel>('root')
 const previews = reactive<Record<string, string>>({})
@@ -300,8 +380,7 @@ const {
   goInto,
 } = useDriveFiles()
 
-const usedGb = computed(() => usedBytes.value / (1024 * 1024 * 1024))
-const usedLabel = computed(() => (usedGb.value < 10 ? usedGb.value.toFixed(1) : usedGb.value.toFixed(0)))
+const usedLabel = computed(() => (usedBytes.value > 0 ? formatBytes(usedBytes.value) : '0 B'))
 const usedPct = computed(() => Math.min(100, (usedBytes.value / (CAP_GB * 1024 * 1024 * 1024)) * 100))
 const sortLabel = computed(
   () => sortOptions.value.find((opt) => opt.value === sortKey.value)?.label ?? t('drive.sortName'),
@@ -309,6 +388,7 @@ const sortLabel = computed(
 const canActDownload = computed(() => Boolean(selected.value?.isFile && canDownload.value))
 const canActWrite = computed(() => Boolean(selected.value && canWrite.value && !atRoot.value))
 const canActMeta = computed(() => Boolean(selected.value))
+const canDragItems = computed(() => canWrite.value && !atRoot.value)
 const selNote = computed(
   () => message.value || offlineNote.value || (loading.value || busy.value ? t('drive.loading') : ''),
 )
@@ -494,17 +574,130 @@ function onFileInput(event: Event) {
   input.value = ''
 }
 
-function onDragLeave(event: DragEvent) {
-  const node = event.currentTarget
-  if (node instanceof Element && !node.contains(event.relatedTarget as Node | null)) {
-    dragging.value = false
+function canDropInto(item: FilesVO): boolean {
+  return Boolean(dragNode.value && !item.isFile && dragNode.value.fileName !== item.fileName)
+}
+
+function onItemDragStart(item: FilesVO) {
+  dragNode.value = item
+  selected.value = item
+  exposing.value = false
+}
+
+function onItemDragEnd() {
+  dragNode.value = null
+  dropSlot.value = ''
+}
+
+function onSlotOver(slot: string, event: DragEvent) {
+  if (!dragNode.value || isFileDrag(event)) {
+    return
+  }
+  event.preventDefault()
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'move'
+  }
+  dropSlot.value = slot
+}
+
+function onSlotLeave(slot: string) {
+  if (dropSlot.value === slot) {
+    dropSlot.value = ''
   }
 }
 
-function onDrop(event: DragEvent) {
-  dragging.value = false
-  const file = event.dataTransfer?.files?.[0]
-  void uploadPicked(file)
+function destAccess(dest: string[]) {
+  return {
+    crumbs: dest,
+    userId: auth.user?.userId,
+    isAdmin: auth.isAdmin,
+  }
+}
+
+async function dropMoveTo(dest: string[]) {
+  const item = dragNode.value
+  dropSlot.value = ''
+  if (!item || !canDragItems.value) {
+    return
+  }
+  if (isSameFolder(dest, crumbs.value)) {
+    return
+  }
+  if (isForbiddenMoveDest(dest, crumbs.value, item.fileName, item.isFile)) {
+    message.value = t('drive.cannotMoveHere')
+    return
+  }
+  if (!canWriteInFolder(destAccess(dest))) {
+    message.value = messageForCode(ErrorCode.NO_PERMISSION)
+    return
+  }
+  await moveItem(item, toServerPath(dest))
+  if (!message.value) {
+    selected.value = null
+  }
+}
+
+function onDropMine() {
+  if (!auth.user) {
+    return
+  }
+  void dropMoveTo([String(auth.user.userId)])
+}
+
+function onDropPublic() {
+  void dropMoveTo(['public'])
+}
+
+function onDropCrumb(index: number) {
+  void dropMoveTo(crumbs.value.slice(0, index + 1))
+}
+
+function onDropIntoFolder(item: FilesVO) {
+  if (!canDropInto(item)) {
+    return
+  }
+  void dropMoveTo([...crumbs.value, item.fileName])
+}
+
+function onDropTrash() {
+  dropSlot.value = ''
+  if (dragNode.value) {
+    noteOffline(t('drive.trash'))
+  }
+}
+
+function onBrowserDragEnter(event: DragEvent) {
+  if (dragNode.value || !isFileDrag(event) || !canWrite.value || atRoot.value) {
+    return
+  }
+  event.preventDefault()
+  exposing.value = true
+}
+
+function onBrowserDragOver(event: DragEvent) {
+  if (dragNode.value || !isFileDrag(event) || !canWrite.value || atRoot.value) {
+    return
+  }
+  event.preventDefault()
+  exposing.value = true
+}
+
+function onBrowserDragLeave(event: DragEvent) {
+  const node = event.currentTarget
+  if (node instanceof Element && !node.contains(event.relatedTarget as Node | null)) {
+    exposing.value = false
+  }
+}
+
+async function onBrowserDrop(event: DragEvent) {
+  exposing.value = false
+  if (dragNode.value || !isFileDrag(event)) {
+    return
+  }
+  const files = Array.from(event.dataTransfer?.files ?? [])
+  for (const file of files) {
+    await uploadPicked(file)
+  }
 }
 
 function openCreate() {
@@ -675,8 +868,16 @@ onUnmounted(() => {
 }
 
 .arc__nav button.is-on,
+.arc__nav button.is-drop,
+.arc__title button.is-drop,
 .arc__tools > button.is-on {
   color: var(--arc-lime);
+}
+
+.arc__nav button.is-drop,
+.arc__title button.is-drop {
+  outline: 1px dashed var(--arc-lime);
+  outline-offset: 2px;
 }
 
 .arc__nav button.is-off {
@@ -692,7 +893,8 @@ onUnmounted(() => {
 
 .arc__store-num {
   margin: 0.35rem 0;
-  font-size: 1.6rem;
+  font-size: 1.15rem;
+  letter-spacing: 0.04em;
   color: var(--arc-ink);
 }
 
@@ -782,26 +984,71 @@ onUnmounted(() => {
 
 .arc__status {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.85rem;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.75rem;
+  height: 10px;
+  font-family: 'Microsoft YaHei UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
   font-size: 10px;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.04em;
+  line-height: 1;
   color: rgb(235 244 246 / 55%);
 }
 
-.arc__status strong {
+.arc__stat,
+.arc__pill {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  height: 10px;
+  line-height: 1;
+}
+
+.arc__stat {
+  gap: 0.32rem;
+}
+
+.arc__stat em {
+  font-style: normal;
+}
+
+.arc__stat strong {
   color: var(--arc-ink);
   font-weight: 500;
+}
+
+.arc__stat-num {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.arc__pill {
+  letter-spacing: 0.08em;
+  color: rgb(235 244 246 / 62%);
 }
 
 .is-lime {
   color: var(--arc-lime) !important;
 }
 
-.arc__pill {
-  padding: 0.15rem 0.45rem;
-  border: 1px solid var(--arc-lime);
+.is-warn {
+  color: #e8a87c !important;
+}
+
+.is-mute {
+  color: rgb(235 244 246 / 55%) !important;
+}
+
+.arc__pill.is-up {
   color: var(--arc-lime);
+}
+
+.arc__pill.is-down {
+  color: #e8a87c;
+}
+
+.arc__pill.is-wait {
+  color: var(--arc-chem);
 }
 
 .arc__tools {
@@ -915,11 +1162,64 @@ onUnmounted(() => {
 }
 
 .arc__browser {
+  position: relative;
   min-width: 0;
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
   padding: 0.15rem 0.35rem 0.35rem 0;
+}
+
+.arc__browser.is-expose {
+  outline: 1px dashed var(--arc-lime);
+  outline-offset: -4px;
+}
+
+.arc__expose {
+  pointer-events: none;
+  position: absolute;
+  z-index: 6;
+  inset: 0.2rem;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.55rem;
+  overflow: hidden;
+  background:
+    radial-gradient(80% 70% at 50% 40%, rgb(12 70 92 / 72%), rgb(6 19 27 / 78%));
+  color: var(--arc-lime);
+  text-align: center;
+}
+
+.arc__expose-kicker {
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 0.18em;
+}
+
+.arc__expose p {
+  margin: 0;
+  color: rgb(235 244 246 / 62%);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+}
+
+.arc__expose-scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 38%;
+  background: linear-gradient(180deg, transparent, rgb(183 245 58 / 16%), transparent);
+  animation: expose-scan 1.1s linear infinite;
+}
+
+@keyframes expose-scan {
+  from {
+    top: -40%;
+  }
+  to {
+    top: 100%;
+  }
 }
 
 .arc__browser.is-busy {
@@ -994,7 +1294,8 @@ onUnmounted(() => {
   text-align: left;
 }
 
-.arc__list tr.is-on td {
+.arc__list tr.is-on td,
+.arc__list tr.is-drop td {
   color: var(--arc-lime);
 }
 

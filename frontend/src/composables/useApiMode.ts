@@ -1,7 +1,9 @@
 import { ref } from 'vue'
 import { api } from '@/api/client'
+import { resetLinkReach } from '@/api/linkHealth'
+import type { ApiMode } from '@/utils/apiLink'
 
-export type ApiMode = 'offline' | 'online'
+export type { ApiMode }
 
 const MODE_KEY = 'apiMode'
 
@@ -21,6 +23,7 @@ export function useApiMode() {
     mode.value = next
     localStorage.setItem(MODE_KEY, next)
     apply(next)
+    resetLinkReach()
   }
 
   return { mode, setMode }

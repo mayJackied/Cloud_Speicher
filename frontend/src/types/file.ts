@@ -121,3 +121,16 @@ export function readFilesVOList(data: unknown): FilesVO[] | null {
 export function childrenOf(node: FilesVO): FilesVO[] {
   return node.filesVOS ?? []
 }
+
+/** 文件用 length；文件夹把当前树里已经拿到的子文件加总。 */
+export function bytesOfNode(node: FilesVO): number {
+  if (node.isFile) {
+    return node.length || 0
+  }
+  let total = 0
+  for (const child of childrenOf(node)) {
+    total += bytesOfNode(child)
+  }
+  return total
+}
+

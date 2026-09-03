@@ -22,6 +22,8 @@
         </p>
       </form>
       <p><router-link to="/register">{{ t('auth.requestAccess') }}</router-link></p>
+      <p class="arc-hint">{{ t('auth.modeHint') }}</p>
+      <ApiModeSwitch />
       <LocaleSwitch />
     </main>
   </ArchiveFrame>
@@ -32,6 +34,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { isAxiosError } from 'axios'
 import { login } from '@/api/auth'
+import ApiModeSwitch from '@/components/ApiModeSwitch.vue'
 import ArchiveFrame from '@/components/drive/ArchiveFrame.vue'
 import LocaleSwitch from '@/components/LocaleSwitch.vue'
 import { useI18n } from '@/composables/useI18n'

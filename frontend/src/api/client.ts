@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { noteLinkFailure, noteLinkSuccess } from '@/api/linkHealth'
 import { ErrorCode } from '@/types/errorCode'
 import type { LoginVO } from '@/types/login'
 
@@ -73,6 +74,7 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use(
   (response) => {
+    noteLinkSuccess(response.data)
     const url = response.config.url ?? ''
     if (!isNoJwtUrl(url) && isSessionDead(response.data)) {
       kickToLogin()
@@ -80,6 +82,7 @@ api.interceptors.response.use(
     return response
   },
   (error) => {
+    noteLinkFailure(error)
     const url = axios.isAxiosError(error) ? (error.config?.url ?? '') : ''
     if (axios.isAxiosError(error) && !isNoJwtUrl(url) && isSessionDead(error.response?.data)) {
       kickToLogin()

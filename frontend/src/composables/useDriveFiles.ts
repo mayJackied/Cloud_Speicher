@@ -12,6 +12,7 @@ import {
   isLegalFileName,
   readFilesVOList,
   toServerPath,
+  bytesOfNode,
   type FilesVO,
 } from '@/types/file'
 import { canDownloadInFolder, canWriteInFolder } from '@/utils/driveAccess'
@@ -345,14 +346,7 @@ export function useDriveFiles() {
   }
 
   function usedBytesOf(nodes: FilesVO[]): number {
-    let total = 0
-    for (const node of nodes) {
-      if (node.isFile) {
-        total += node.length || 0
-      }
-      total += usedBytesOf(childrenOf(node))
-    }
-    return total
+    return nodes.reduce((total, node) => total + bytesOfNode(node), 0)
   }
 
   const usedBytes = computed(() => {
