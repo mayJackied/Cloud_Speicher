@@ -111,7 +111,11 @@ public class UserServiceImpl implements UserService {
                 loginVO.setToken(jwtUtils.generateJwt(Map.of("user_id", loginVO.getUserId())));
 
                 File file = new File(fileProperties.getPath() + "/" + u.getUserId());
-                if (file.mkdir()) {
+                File binFile = new File(fileProperties.getPath() + "/" + u.getUserId() + "/" + fileProperties.getRecycleBinName());
+                if (!file.mkdir()) {
+                    return Result.error(ErrorCode.EXCEPTION);
+                }
+                if (!binFile.mkdir()){
                     return Result.error(ErrorCode.EXCEPTION);
                 }
 
@@ -156,7 +160,10 @@ public class UserServiceImpl implements UserService {
 
     private void addJwtBlacklist(String blacklistedJwt) {
         jwtBlacklistMap.addJwtBlacklist(blacklistedJwt);
-        jwtBlacklistMapper.insert(new JwtBlacklist(blacklistedJwt, System.currentTimeMillis() + properties.getExpire() * 24 * 60 * 60 * 1000));
+        JwtBlacklist entity = new JwtBlacklist(blacklistedJwt, System.currentTimeMillis() + properties.getExpire() * 24 * 60 * 60 * 1000);
+        if (jwtBlacklistMapper.selectById(blacklistedJwt) == null){
+            jwtBlacklistMapper.insert(entity);
+        }
     }
 
     public UserServiceImpl(UserMapper userMapper, InviteCodeMapper inviteCodeMapper, JwtUtils jwtUtils, MyValFileProperties myValFileProperties, JwtBlacklistMap jwtBlacklistMap, JwtBlacklistMapper jwtBlacklistMapper, MyValProperties properties) {

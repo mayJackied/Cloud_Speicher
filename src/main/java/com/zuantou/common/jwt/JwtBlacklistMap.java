@@ -50,6 +50,9 @@ public class JwtBlacklistMap implements CommandLineRunner {
                 jwtS.add(blacklist.getJwt());
             }
         }
+        if (jwtS.isEmpty()){
+            return;
+        }
         jwtBlacklistMapper.deleteByIds(jwtS);
     }
 

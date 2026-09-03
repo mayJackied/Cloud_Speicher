@@ -16,6 +16,8 @@ import com.zuantou.pojo.vo.FilesVO;
 import com.zuantou.service.FileService;
 import com.zuantou.common.utils.FileUtil;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -23,6 +25,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -46,7 +49,8 @@ public class FileServiceImpl implements FileService {
 
     @Override
     public Result<Void> addFile(FileDTO addFileDTO) {
-        Integer errorCode = checkFilePermission(addFileDTO.getPath(), OTHER, CommonProperties.COMMON_PATH_OPERATION);
+        Integer errorCode = checkFilePermission(addFileDTO.getPath(), OTHER, CommonProperties.COMMON_ADD_OPERATION);
+
         if (errorCode != null) {
             return Result.error(errorCode);
         }
@@ -88,7 +92,7 @@ public class FileServiceImpl implements FileService {
         return Result.success();
     }
 
-    private DeleteBinFileSource deleteFileMethode(DeleteFileDTO deleteFileDTO){
+    private DeleteBinFileSource deleteFileMethode(DeleteFileDTO deleteFileDTO) {
         Integer errorCode = checkFilePermission(deleteFileDTO.getPath(), OTHER, CommonProperties.COMMON_PATH_OPERATION);
         if (errorCode != null) {
             throw new BusinessException(errorCode);
@@ -99,12 +103,12 @@ public class FileServiceImpl implements FileService {
         if (oldPath.startsWith(publicPath)) {
             targetDir = Paths.get(fileProperties.getPublicPath(), fileProperties.getRecycleBinName());
         } else {
-            targetDir = Paths.get(fileProperties.getPath(), fileProperties.getRecycleBinName());
+            targetDir = Paths.get(fileProperties.getPath() + '/' + UserContext.getUserId() + "/", fileProperties.getRecycleBinName());
         }
 
         File newFile = new File(targetDir.toString(), String.valueOf(oldPath.getFileName()));
 
-        if (newFile.exists()){
+        if (newFile.exists()) {
             newFile = insertedFile(oldPath.toFile(), targetDir.toFile());
         }
         try {
@@ -153,10 +157,14 @@ public class FileServiceImpl implements FileService {
             return Result.error(ErrorCode.FILE_NAME_ILLEGAL);
         }
 
+        File newFile = new File(uploadFileDTO.getPath(), fileName);
 
-        File file = new File(uploadFileDTO.getPath(), fileName);
+        if (newFile.exists()){
+            newFile = insertedFile(newFile, newFile.getParentFile());
+            fileName = newFile.getName();
+        }
         try {
-            if (!file.createNewFile()) {
+            if (!newFile.createNewFile()) {
                 return Result.error(ErrorCode.EXCEPTION);
             }
         } catch (IOException e) {
@@ -174,7 +182,6 @@ public class FileServiceImpl implements FileService {
         } catch (IOException e) {
             return Result.error(ErrorCode.FILE_OPERATION_FAILED);
         }
-
 
         return Result.success();
     }
@@ -195,11 +202,15 @@ public class FileServiceImpl implements FileService {
 
         response.setContentType("application/octet-stream");
 
-        response.setHeader(
-                "Content-Disposition",
-                "attachment; filename=\"" + file.getName() + "\""
-        );
+        ContentDisposition contentDisposition = ContentDisposition
+                .attachment()
+                .filename(file.getName(), StandardCharsets.UTF_8)
+                .build();
 
+        response.setHeader(
+                HttpHeaders.CONTENT_DISPOSITION,
+                contentDisposition.toString()
+        );
         try (
                 FileInputStream inputStream = new FileInputStream(file);
 
@@ -295,8 +306,6 @@ public class FileServiceImpl implements FileService {
         }
     }
 
-    // (1.移除回收站某一个文件, 清空回收站;) 定时清除回收站过期文件; (回收站文件还原;)( 回收站文件禁止使用所有普通文件的方法进行操作)
-
     @Override
     public Result<Void> deleteBinFile(DeleteFileDTO deleteFileDTO) {
         Integer errorCode = checkFilePermission(deleteFileDTO.getPath(), OTHER, CommonProperties.BIN_PATH_OPERATION);
@@ -321,7 +330,8 @@ public class FileServiceImpl implements FileService {
         switch (deleteBinAllFilesDTO.getPathType()) {
             case CommonProperties.PUBLIC_PATH ->
                     path = fileProperties.getPublicPath() + fileProperties.getRecycleBinName();
-            case CommonProperties.USER_PATH -> path = fileProperties.getPath() + fileProperties.getRecycleBinName();
+            case CommonProperties.USER_PATH ->
+                    path = fileProperties.getPath() + '/' + UserContext.getUserId() + "/" + fileProperties.getRecycleBinName();
         }
 
         Integer errorCode = checkFilePermission(path, OTHER, CommonProperties.BIN_PATH_OPERATION);
@@ -341,38 +351,69 @@ public class FileServiceImpl implements FileService {
         DeleteBinFileSource deleteBinFileSource = deleteBinFileSourceMapper.selectById(deleteFileDTO.getPath());
         File newFile = new File(deleteBinFileSource.getOldPath());
         File oldFile = new File(deleteBinFileSource.getNewPath());
-        if (newFile.exists()){
-            newFile = insertedFile(oldFile, newFile.getParentFile());
-        }
-        try {
-            Files.move(oldFile.toPath(),newFile.toPath());
-        } catch (IOException e) {
-            return Result.error(ErrorCode.EXCEPTION);
+        if (newFile.exists()) {
+            File newNamedFile = insertedFile(oldFile, newFile.getParentFile());
+            if (newFile.isFile()){
+                try {
+                    if (!newNamedFile.createNewFile()) {
+                        return Result.error(ErrorCode.EXCEPTION);
+                    }
+                } catch (IOException e) {
+                    throw new BusinessException(ErrorCode.EXCEPTION);
+                }
+            }else {
+                if (!newNamedFile.mkdir()) {
+                    return Result.error(ErrorCode.EXCEPTION);
+                }
+            }
+            try {
+                Files.move(oldFile.toPath(), newNamedFile.toPath());
+            } catch (IOException e) {
+                return Result.error(ErrorCode.EXCEPTION);
+            }
+        }else {
+            try {
+                Files.move(oldFile.toPath(), newFile.toPath());
+            } catch (IOException e) {
+                return Result.error(ErrorCode.EXCEPTION);
+            }
         }
         deleteBinFileSourceMapper.deleteById(deleteBinFileSource.getNewPath());
         return Result.success();
     }
-
+// 分享, 收藏
 
     private Integer checkFilePermission(String path, int operationType, int fileType) {
         Path target = Paths.get(path).toAbsolutePath().normalize();
-        if (!target.toFile().exists()) {
-            return ErrorCode.FILE_NOT_FOUND;
+        if (fileType != CommonProperties.COMMON_ADD_OPERATION) {
+            if (!target.toFile().exists()) {
+                return ErrorCode.FILE_NOT_FOUND;
+            }
         }
         Path publicPath;
         Path userPath;
 
         switch (fileType) {
-            case CommonProperties.COMMON_PATH_OPERATION -> {
+            case CommonProperties.COMMON_PATH_OPERATION, CommonProperties.COMMON_ADD_OPERATION -> {
                 publicPath = Paths.get(fileProperties.getPublicPath()).toAbsolutePath().normalize();
                 userPath = Paths.get(fileProperties.getPath(), UserContext.getUserId().toString()).toAbsolutePath().normalize();
             }
             case CommonProperties.BIN_PATH_OPERATION -> {
                 publicPath = Paths.get(fileProperties.getPublicPath() + fileProperties.getRecycleBinName()).toAbsolutePath().normalize();
-                userPath = Paths.get(fileProperties.getPath() + fileProperties.getRecycleBinName()).toAbsolutePath().normalize();
+                userPath = Paths.get(fileProperties.getPath() + '/' + UserContext.getUserId() + "/" + fileProperties.getRecycleBinName()).toAbsolutePath().normalize();
             }
             default -> {
                 return ErrorCode.EXCEPTION;
+            }
+        }
+
+        if (!target.startsWith(userPath) && !target.startsWith(publicPath)) {
+            return ErrorCode.NO_PERMISSION;
+        }
+
+        if (fileType == CommonProperties.BIN_PATH_OPERATION) {
+            if (target.startsWith(publicPath) || target.startsWith(userPath)) {
+                return ErrorCode.BIN_FILE_NOT_ALLOWED;
             }
         }
 
@@ -381,16 +422,6 @@ public class FileServiceImpl implements FileService {
             return ErrorCode.USER_NOT_FOUND;
         }
         boolean admin = user.isAdmin();
-
-        if (!target.startsWith(userPath) && !target.startsWith(publicPath)) {
-            return ErrorCode.NO_PERMISSION;
-        }
-
-        if (fileType == CommonProperties.COMMON_PATH_OPERATION) {
-            if (target.startsWith(publicPath) || target.startsWith(userPath)) {
-                return ErrorCode.BIN_FILE_NOT_ALLOWED;
-            }
-        }
 
         if (target.startsWith(userPath) || admin || (operationType == SEARCH_AND_DOWNLOAD && !target.startsWith(userPath))) {
             return null;
@@ -401,7 +432,7 @@ public class FileServiceImpl implements FileService {
     private Path isBinPath(String path) {
         Path binPath = Paths.get(path).toAbsolutePath().normalize();
         Path publicBinPath = Paths.get(fileProperties.getPublicPath() + fileProperties.getRecycleBinName()).toAbsolutePath().normalize();
-        Path userBinPath = Paths.get(fileProperties.getPath() + fileProperties.getRecycleBinName()).toAbsolutePath().normalize();
+        Path userBinPath = Paths.get(fileProperties.getPath() + '/' + UserContext.getUserId() + "/" + fileProperties.getRecycleBinName()).toAbsolutePath().normalize();
 
         if (binPath.startsWith(publicBinPath)) {
             return binPath;

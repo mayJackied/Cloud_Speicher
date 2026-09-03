@@ -2,7 +2,7 @@ package com.zuantou.common.properties;
 
 public class CommonProperties {
     /**
-     * MoveFile Type
+     * MoveFile Type duplicatedNameOperation
      */
     public static final int DEFAULT = 0;
     public static final int REPLACE = 1;
@@ -13,4 +13,5 @@ public class CommonProperties {
 
     public static final int COMMON_PATH_OPERATION = 5;
     public static final int BIN_PATH_OPERATION = 6;
+    public static final int COMMON_ADD_OPERATION = 7;
 }
