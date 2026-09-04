@@ -1,26 +1,15 @@
 <template>
   <ArchiveFrame fill :clock="false">
     <div class="transfer-shell">
-      <aside class="transfer-side">
-        <p class="transfer-brand">ARCHIVAL_CLOUD</p>
-        <nav class="transfer-nav">
-          <router-link to="/drive">{{ t('drive.myDrive') }}</router-link>
-          <button type="button" disabled>{{ t('drive.public') }}</button>
-          <button type="button" disabled>{{ t('drive.root') }}</button>
-          <button type="button" disabled>{{ t('drive.recent') }}</button>
-          <button type="button" disabled>{{ t('drive.starred') }}</button>
-          <button type="button" disabled>{{ t('drive.shared') }}</button>
-          <router-link class="is-on" to="/drive/transfers">
-            {{ t('drive.transfers') }}
-            <span v-if="transfers.activeCount">[{{ transfers.activeCount }}]</span>
-          </router-link>
-          <router-link to="/drive">{{ t('drive.trash') }}</router-link>
-        </nav>
-        <nav class="transfer-nav transfer-nav--bottom">
-          <router-link to="/drive/settings">{{ t('drive.settings') }}</router-link>
-          <button type="button" @click="signOut">{{ t('drive.signOut') }}</button>
-        </nav>
-      </aside>
+      <DriveSidebar
+        active="transfers"
+        @open-mine="goDrive('mine')"
+        @open-public="goDrive('public')"
+        @open-root="goDrive('root')"
+        @open-trash="goDrive('trash')"
+        @note-offline="noteOffline"
+        @logout="signOut"
+      />
 
       <main class="transfer-main">
         <header class="transfer-head">
@@ -44,7 +33,7 @@
         </div>
 
         <p class="transfer-hint">
-          {{ apiMode === 'offline' ? t('transfers.mockHint') : t('transfers.backendHint') }}
+          {{ offlineNote || (apiMode === 'offline' ? t('transfers.mockHint') : t('transfers.backendHint')) }}
         </p>
 
         <section class="transfer-list" aria-live="polite">
@@ -144,8 +133,10 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import ArchiveFrame from '@/components/drive/ArchiveFrame.vue'
+import DriveSidebar from '@/components/drive/DriveSidebar.vue'
 import { logout } from '@/api/auth'
 import { readApiMode } from '@/api/client'
+import { useDriveFiles } from '@/composables/useDriveFiles'
 import { useI18n } from '@/composables/useI18n'
 import { useAuthStore } from '@/stores/auth'
 import { transferProgress, useTransferStore } from '@/stores/transfers'
@@ -161,9 +152,11 @@ const { t } = useI18n()
 const router = useRouter()
 const auth = useAuthStore()
 const transfers = useTransferStore()
+const { load } = useDriveFiles()
 const filter = ref<TransferFilter>('all')
 const fallbackInput = ref<HTMLInputElement | null>(null)
 const pendingSourceTask = ref('')
+const offlineNote = ref('')
 const apiMode = readApiMode()
 
 const filters = computed(() => [
@@ -216,6 +209,14 @@ function formatDuration(seconds: number) {
   const minutes = Math.floor(seconds / 60)
   const rest = seconds % 60
   return `${minutes}m ${rest}s`
+}
+
+function goDrive(channel: 'mine' | 'public' | 'root' | 'trash') {
+  void router.push({ name: 'drive', query: { channel } })
+}
+
+function noteOffline(label: string) {
+  offlineNote.value = label
 }
 
 async function chooseSource(taskId: string) {
@@ -271,6 +272,8 @@ async function signOut() {
 
 onMounted(() => {
   void transfers.hydrate()
+  // 与网盘共用同一份树；已有数据时安静刷新，避免占用条从 0 跳变。
+  void load({ quiet: true })
 })
 </script>
 
@@ -284,32 +287,6 @@ onMounted(() => {
   overflow: hidden;
 }
 
-.transfer-side {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-  padding: 1.25rem 1rem 1.25rem 1.4rem;
-  border-right: 1px solid var(--arc-line);
-}
-
-.transfer-brand {
-  margin: 0;
-  font-family: var(--arc-display);
-  font-size: 0.85rem;
-  letter-spacing: 0.12em;
-}
-
-.transfer-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.transfer-nav--bottom {
-  margin-top: auto;
-}
-
-.transfer-nav :is(a, button),
 .transfer-head button,
 .transfer-filters button,
 .transfer-actions button {
@@ -325,12 +302,6 @@ onMounted(() => {
   cursor: pointer;
 }
 
-.transfer-nav button:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-.transfer-nav .is-on,
 .transfer-filters .is-on,
 .transfer-actions button:hover {
   color: var(--arc-lime);
@@ -497,15 +468,6 @@ dd {
   .transfer-shell {
     grid-template-columns: 1fr;
     overflow: auto;
-  }
-
-  .transfer-side {
-    border-right: 0;
-    border-bottom: 1px solid var(--arc-line);
-  }
-
-  .transfer-nav {
-    flex-flow: row wrap;
   }
 
   dl {

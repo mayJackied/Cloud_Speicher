@@ -1,58 +1,22 @@
 <template>
   <ArchiveFrame fill :clock="false">
     <div class="arc">
-    <aside class="arc__side">
-      <p class="arc__brand">ARCHIVAL_CLOUD</p>
-      <nav class="arc__nav">
-        <button
-          type="button"
-          :class="{ 'is-on': channel === 'mine', 'is-drop': dropSlot === 'mine' }"
-          @click="openMine"
-          @dragover="onSlotOver('mine', $event)"
-          @dragleave="onSlotLeave('mine')"
-          @drop.prevent="onDropMine"
-        >{{ t('drive.myDrive') }}</button>
-        <button
-          type="button"
-          :class="{ 'is-on': channel === 'public', 'is-drop': dropSlot === 'public' }"
-          @click="openPublic"
-          @dragover="onSlotOver('public', $event)"
-          @dragleave="onSlotLeave('public')"
-          @drop.prevent="onDropPublic"
-        >{{ t('drive.public') }}</button>
-        <button type="button" :class="{ 'is-on': channel === 'root' }" @click="openRoot">{{ t('drive.root') }}</button>
-        <button type="button" class="is-off" @click="noteOffline(t('drive.recent'))">{{ t('drive.recent') }}</button>
-        <button type="button" class="is-off" @click="noteOffline(t('drive.starred'))">{{ t('drive.starred') }}</button>
-        <button type="button" class="is-off" @click="noteOffline(t('drive.shared'))">{{ t('drive.shared') }}</button>
-        <router-link to="/drive/transfers">
-          {{ t('drive.transfers') }}
-          <span v-if="transfers.activeCount">[{{ transfers.activeCount }}]</span>
-        </router-link>
-        <button
-          type="button"
-          :class="{
-            'is-on': channel === 'trash',
-            'is-live': trashHasItems && channel !== 'trash',
-            'is-drop': dropSlot === 'trash',
-          }"
-          @click="openTrash"
-          @dragover="onSlotOver('trash', $event)"
-          @dragleave="onSlotLeave('trash')"
-          @drop.prevent="onDropTrash"
-        >{{ t('drive.trash') }}</button>
-      </nav>
-      <div class="arc__store">
-        <p>{{ t('drive.storageUsed') }}</p>
-        <p class="arc__store-num font-natto">{{ usedLabel }} <span>/ 100 GB</span></p>
-        <div class="arc__bar"><i :style="{ width: usedPct + '%' }" /></div>
-        <p>{{ t('drive.storageLoad') }}: {{ usedPct < 80 ? t('drive.optimal') : t('drive.high') }}</p>
-      </div>
-      <div class="arc__side-links">
-        <router-link to="/drive/settings">{{ t('drive.settings') }}</router-link>
-        <router-link to="/admin/invitations">{{ t('drive.invite') }}</router-link>
-        <button type="button" @click="onLogout">{{ t('drive.signOut') }}</button>
-      </div>
-    </aside>
+    <DriveSidebar
+      :active="channel"
+      :drop-slot="dropSlot"
+      enable-drop
+      @open-mine="openMine"
+      @open-public="openPublic"
+      @open-root="openRoot"
+      @open-trash="openTrash"
+      @note-offline="noteOffline"
+      @logout="onLogout"
+      @slot-over="onSlotOver"
+      @slot-leave="onSlotLeave"
+      @drop-mine="onDropMine"
+      @drop-public="onDropPublic"
+      @drop-trash="onDropTrash"
+    />
 
     <div class="arc__body">
       <header class="arc__head">
@@ -306,7 +270,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { logout } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
 import { usePrefsStore } from '@/stores/prefs'
@@ -333,11 +297,11 @@ import {
   isInTrash,
   isProtectedRecycleBin,
   isRecycleBinName,
-  trashItemCount,
 } from '@/utils/recycleBin'
 import FileCard from '@/components/drive/FileCard.vue'
 import CyanotypeMedia from '@/components/drive/CyanotypeMedia.vue'
 import ArchiveFrame from '@/components/drive/ArchiveFrame.vue'
+import DriveSidebar from '@/components/drive/DriveSidebar.vue'
 import FolderPicker from '@/components/drive/FolderPicker.vue'
 import Timeboard from '@/components/drive/Timeboard.vue'
 import ConcreteVoid from '@/components/drive/ConcreteVoid.vue'
@@ -385,9 +349,9 @@ const sortOptions = computed(() => [
   { value: 'time' as const, label: t('drive.sortModified') },
 ])
 
-const CAP_GB = 100
 const auth = useAuthStore()
 const transfers = useTransferStore()
+const route = useRoute()
 const router = useRouter()
 const fileInput = ref<HTMLInputElement | null>(null)
 const query = ref('')
@@ -448,7 +412,6 @@ const roomRoot = computed(() => {
   return roots.value.find((node) => node.fileName === String(auth.user?.userId)) ?? null
 })
 const inTrash = computed(() => isInTrash(crumbs.value, auth.user?.userId))
-const trashHasItems = computed(() => trashItemCount(roomRoot.value) > 0)
 const selectedItems = computed(() =>
   currentItems.value.filter((item) => selectedNames.value.includes(item.fileName)),
 )
@@ -459,7 +422,6 @@ const selectedIsProtectedBin = computed(() =>
 )
 
 const usedLabel = computed(() => (usedBytes.value > 0 ? formatBytes(usedBytes.value) : '0 B'))
-const usedPct = computed(() => Math.min(100, (usedBytes.value / (CAP_GB * 1024 * 1024 * 1024)) * 100))
 const sortLabel = computed(
   () => sortOptions.value.find((opt) => opt.value === sortKey.value)?.label ?? t('drive.sortName'),
 )
@@ -1127,13 +1089,25 @@ function closeMenu() {
   sortOpen.value = false
 }
 
+async function applyChannelQuery() {
+  const wanted = String(route.query.channel ?? '')
+  if (wanted === 'public') {
+    openPublic()
+  } else if (wanted === 'root') {
+    openRoot()
+  } else if (wanted === 'trash') {
+    await openTrash()
+  } else if (auth.user) {
+    openMine()
+  }
+  if (wanted) {
+    await router.replace({ name: 'drive', query: {} })
+  }
+}
+
 onMounted(() => {
   void transfers.hydrate()
-  void load().then(() => {
-    if (auth.user) {
-      openMine()
-    }
-  })
+  void load().then(() => applyChannelQuery())
   window.addEventListener('mousedown', closeMenu)
   window.addEventListener('keydown', onKey)
 })
@@ -1156,38 +1130,11 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-.arc__side,
 .arc__body {
   position: relative;
   z-index: 3;
 }
 
-.arc__side {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-  min-height: 0;
-  overflow: auto;
-  padding: 1.25rem 1rem 1.25rem 1.4rem;
-  border-right: 1px solid var(--arc-line);
-}
-
-.arc__brand {
-  margin: 0;
-  font-family: var(--arc-display);
-  letter-spacing: 0.12em;
-  font-size: 0.85rem;
-}
-
-.arc__nav,
-.arc__side-links {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.arc__nav :is(button, a),
-.arc__side-links :is(a, button),
 .arc__tools > button,
 .arc__sel button,
 .arc__preview-head button,
@@ -1205,58 +1152,14 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
-.arc__nav :is(button, a).is-on,
-.arc__nav a.router-link-active,
-.arc__nav :is(button, a).is-live,
-.arc__nav :is(button, a).is-drop,
 .arc__title button.is-drop,
 .arc__tools > button.is-on {
   color: var(--arc-lime);
 }
 
-.arc__nav :is(button, a).is-live {
-  opacity: 0.85;
-}
-
-.arc__nav :is(button, a).is-drop,
 .arc__title button.is-drop {
   outline: 1px dashed var(--arc-lime);
   outline-offset: 2px;
-}
-
-.arc__nav :is(button, a).is-off {
-  opacity: 0.45;
-}
-
-.arc__store {
-  margin-top: auto;
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  color: rgb(235 244 246 / 55%);
-}
-
-.arc__store-num {
-  margin: 0.35rem 0;
-  font-size: 1.15rem;
-  letter-spacing: 0.04em;
-  color: var(--arc-ink);
-}
-
-.arc__store-num span {
-  font-size: 0.7rem;
-  color: rgb(235 244 246 / 45%);
-}
-
-.arc__bar {
-  height: 2px;
-  margin: 0.4rem 0 0.6rem;
-  background: rgb(235 244 246 / 16%);
-}
-
-.arc__bar i {
-  display: block;
-  height: 100%;
-  background: var(--arc-lime);
 }
 
 .arc__workspace {
@@ -1572,14 +1475,12 @@ onUnmounted(() => {
 }
 
 .arc__browser::-webkit-scrollbar,
-.arc__preview::-webkit-scrollbar,
-.arc__side::-webkit-scrollbar {
+.arc__preview::-webkit-scrollbar {
   width: 8px;
 }
 
 .arc__browser::-webkit-scrollbar-thumb,
-.arc__preview::-webkit-scrollbar-thumb,
-.arc__side::-webkit-scrollbar-thumb {
+.arc__preview::-webkit-scrollbar-thumb {
   background: rgb(235 244 246 / 22%);
 }
 
@@ -1754,7 +1655,7 @@ onUnmounted(() => {
     grid-template-columns: 1fr;
   }
 
-  .arc__side {
+  .arc :deep(.drive-side) {
     display: none;
   }
 

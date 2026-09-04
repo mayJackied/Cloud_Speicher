@@ -14,7 +14,7 @@ const api = vi.hoisted(() => ({
 
 vi.mock('@/api/files', () => api)
 
-import { useDriveFiles } from './useDriveFiles'
+import { useDriveFiles, resetDriveFilesState } from './useDriveFiles'
 import { useAuthStore } from '@/stores/auth'
 
 function memoryStorage(): Storage {
@@ -42,6 +42,7 @@ function file(fileName: string, length = 12): FilesVO {
 describe('useDriveFiles 回收站还原', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    resetDriveFilesState()
     vi.stubGlobal('localStorage', memoryStorage())
     vi.stubGlobal('sessionStorage', memoryStorage())
     setActivePinia(createPinia())

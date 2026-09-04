@@ -80,17 +80,30 @@ async function resultFromBlob(data: Blob): Promise<{ code: number } | null> {
   }
 }
 
+/** 网盘树在页面间共享，避免 CloudDrive / Transfers 各持一份导致占用条闪跳。 */
+const roots = ref<FilesVO[]>([])
+const crumbs = ref<string[]>([])
+const loading = ref(false)
+const busy = ref(false)
+const message = ref('')
+const nameDraft = ref('')
+let trashMetaCache: TrashMeta | null = null
+let trashMetaSyncQueue: Promise<void> = Promise.resolve()
+
+export function resetDriveFilesState() {
+  roots.value = []
+  crumbs.value = []
+  loading.value = false
+  busy.value = false
+  message.value = ''
+  nameDraft.value = ''
+  trashMetaCache = null
+  trashMetaSyncQueue = Promise.resolve()
+}
+
 export function useDriveFiles() {
   const auth = useAuthStore()
   const transfers = useTransferStore()
-  const roots = ref<FilesVO[]>([])
-  const crumbs = ref<string[]>([])
-  const loading = ref(false)
-  const busy = ref(false)
-  const message = ref('')
-  const nameDraft = ref('')
-  let trashMetaCache: TrashMeta | null = null
-  let trashMetaSyncQueue: Promise<void> = Promise.resolve()
 
   const currentItems = computed(() => {
     if (crumbs.value.length === 0) {
@@ -146,7 +159,8 @@ export function useDriveFiles() {
   }
 
   async function load(opts?: { quiet?: boolean }) {
-    if (!opts?.quiet) {
+    const quiet = opts?.quiet ?? roots.value.length > 0
+    if (!quiet) {
       loading.value = true
     }
     message.value = ''
@@ -174,7 +188,7 @@ export function useDriveFiles() {
       }
       message.value = '无法连接服务器'
     } finally {
-      if (!opts?.quiet) {
+      if (!quiet) {
         loading.value = false
       }
     }
