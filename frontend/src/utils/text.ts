@@ -143,6 +143,24 @@ export function asciiUploadAlias(original: string, nonce = `${Date.now().toStrin
   return ext ? `${safe}.${ext}` : safe
 }
 
+/** 与现网上传重名规则一致：`a.xlsx` → `a(1).xlsx`，`头疼.GIF` → `头疼(1).GIF`。 */
+export function availableCopyName(taken: Iterable<string>, name: string): string {
+  const have = new Set(taken)
+  if (!have.has(name)) {
+    return name
+  }
+  const dot = name.lastIndexOf('.')
+  const stem = dot > 0 ? name.slice(0, dot) : name
+  const ext = dot > 0 ? name.slice(dot) : ''
+  for (let i = 1; i < 10000; i += 1) {
+    const candidate = `${stem}(${i})${ext}`
+    if (!have.has(candidate)) {
+      return candidate
+    }
+  }
+  return name
+}
+
 /** 档案风：只把拉丁字母变大写，CJK / 假名 / 谚文保持原字形。 */
 export function archivalDisplayName(name: string): string {
   return decodeFileName(name)

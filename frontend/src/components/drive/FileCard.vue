@@ -4,7 +4,7 @@
     class="card"
     :class="{ 'is-on': selected, 'is-drop': droppable }"
     :draggable="draggable"
-    @click="$emit('select')"
+    @click="$emit('select', $event)"
     @dblclick="$emit('open')"
     @contextmenu.prevent="$emit('menu', $event)"
     @mouseenter="$emit('hover')"
@@ -62,7 +62,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  select: []
+  select: [event: MouseEvent]
   open: []
   hover: []
   menu: [event: MouseEvent]

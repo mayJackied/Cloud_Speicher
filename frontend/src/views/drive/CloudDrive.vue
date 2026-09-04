@@ -26,9 +26,12 @@
         <button type="button" class="is-off" @click="noteOffline(t('drive.shared'))">{{ t('drive.shared') }}</button>
         <button
           type="button"
-          class="is-off"
-          :class="{ 'is-drop': dropSlot === 'trash' }"
-          @click="noteOffline(t('drive.trash'))"
+          :class="{
+            'is-on': channel === 'trash',
+            'is-live': trashHasItems && channel !== 'trash',
+            'is-drop': dropSlot === 'trash',
+          }"
+          @click="openTrash"
           @dragover="onSlotOver('trash', $event)"
           @dragleave="onSlotLeave('trash')"
           @drop.prevent="onDropTrash"
@@ -114,11 +117,15 @@
       </div>
 
       <p class="arc__sel" :class="{ 'is-idle': !selected }">
-        <span class="arc__sel-count">{{ selected ? t('drive.selected') : t('drive.selectedNone') }}</span>
+        <span class="arc__sel-count">{{ selectedLabel }}</span>
         <button type="button" :disabled="!canActDownload" @click="selected && downloadItem(selected)">{{ t('drive.download') }}</button>
-        <button type="button" :disabled="!canActWrite" @click="openRename">{{ t('drive.rename') }}</button>
-        <button type="button" :disabled="!canActWrite" @click="openMove">{{ t('drive.move') }}</button>
-        <button type="button" :disabled="!canActWrite" @click="confirmDelete">{{ t('drive.delete') }}</button>
+        <button type="button" :disabled="!canActWrite || selectedItems.length !== 1" @click="openRename">{{ t('drive.rename') }}</button>
+        <button type="button" :disabled="!canBatchMove" @click="openMove">{{ t('drive.move') }}</button>
+        <button
+          type="button"
+          :disabled="inTrash ? !canRestore : !canActWrite"
+          @click="inTrash ? selected && onRestore(selected) : confirmDelete()"
+        >{{ inTrash ? t('drive.restore') : t('drive.delete') }}</button>
         <button type="button" :disabled="!canActMeta" @click="noteOffline(t('drive.share'))">{{ t('drive.share') }}</button>
         <button type="button" :disabled="!canActMeta" @click="noteOffline(t('drive.star'))">{{ t('drive.star') }}</button>
         <span v-if="selNote" class="arc__sel-note">{{ selNote }}</span>
@@ -128,7 +135,7 @@
         <section
           class="arc__browser"
           :class="{ 'is-busy': busy, 'is-expose': exposing }"
-          @click.self="selected = null"
+          @click.self="clearSelection"
           @dragenter="onBrowserDragEnter"
           @dragover="onBrowserDragOver"
           @dragleave="onBrowserDragLeave"
@@ -141,18 +148,18 @@
           </div>
           <p v-if="loading && roots.length === 0" class="arc__empty">{{ t('drive.loading') }}</p>
           <ConcreteVoid v-else-if="visibleItems.length === 0" :kind="searching ? 'search' : 'empty'" />
-          <div v-else-if="view === 'grid'" class="arc__grid-view">
+          <div v-else-if="view === 'grid'" class="arc__grid-view" @click.self="clearSelection">
             <FileCard
               v-for="item in visibleItems"
               :key="item.fileName"
               :item="item"
-              :label="labelOf(item.fileName)"
-              :selected="selected?.fileName === item.fileName"
+              :label="itemLabel(item)"
+              :selected="selectedNames.includes(item.fileName)"
               :preview-src="previews[item.fileName]"
               :thumbs="prefs.thumbnails"
-              :draggable="canDragItems"
+              :draggable="canDragItems && !isProtectedBin(item)"
               :droppable="canDropInto(item)"
-              @select="select(item)"
+              @select="select(item, $event)"
               @open="openItem(item)"
               @hover="void warmPreview(item)"
               @menu="(event) => openMenu(event, item)"
@@ -179,13 +186,13 @@
                 <th>{{ t('drive.modified') }}</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody @click.self="clearSelection">
               <tr
                 v-for="item in visibleItems"
                 :key="item.fileName"
-                :class="{ 'is-on': selected?.fileName === item.fileName, 'is-drop': canDropInto(item) }"
-                :draggable="canDragItems"
-                @click="select(item)"
+                :class="{ 'is-on': selectedNames.includes(item.fileName), 'is-drop': canDropInto(item) }"
+                :draggable="canDragItems && !isProtectedBin(item)"
+                @click="select(item, $event)"
                 @dblclick="openItem(item)"
                 @contextmenu.prevent="openMenu($event, item)"
                 @dragstart="onItemDragStart(item)"
@@ -193,7 +200,7 @@
                 @dragover="canDropInto(item) && onSlotOver(`folder:${item.fileName}`, $event)"
                 @drop.prevent="onDropIntoFolder(item)"
               >
-                <td>{{ archivalDisplayName(labelOf(item.fileName)) }}</td>
+                <td>{{ archivalDisplayName(itemLabel(item)) }}</td>
                 <td>{{ typeLabel(kindOf(item), item.fileName) }}</td>
                 <td>{{ formatBytes(bytesOfNode(item)) }}</td>
                 <td>{{ formatStamp(item.lastModified) }}</td>
@@ -223,7 +230,7 @@
               </div>
             </div>
             <dl class="arc__meta">
-              <div><dt>{{ t('drive.name') }}</dt><dd>{{ archivalDisplayName(selected.fileName) }}</dd></div>
+              <div><dt>{{ t('drive.name') }}</dt><dd>{{ archivalDisplayName(itemLabel(selected)) }}</dd></div>
               <div><dt>{{ t('drive.type') }}</dt><dd>{{ typeLabel(kindOf(selected), selected.fileName) }}</dd></div>
               <div><dt>{{ t('drive.size') }}</dt><dd>{{ formatBytes(bytesOfNode(selected)) }}</dd></div>
               <div><dt>{{ t('drive.modified') }}</dt><dd>{{ formatStamp(selected.lastModified) }}</dd></div>
@@ -242,21 +249,40 @@
       <button v-if="menu.item.isFile && canDownload" type="button" @click="downloadItem(menu.item); menu = null">
         {{ t('drive.download') }}
       </button>
-      <button v-if="canWrite && !atRoot" type="button" @click="openRename(); menu = null">{{ t('drive.rename') }}</button>
-      <button v-if="canWrite && !atRoot" type="button" @click="openMove(); menu = null">{{ t('drive.move') }}</button>
-      <button v-if="canWrite && !atRoot" type="button" @click="confirmDelete(); menu = null">{{ t('drive.delete') }}</button>
-      <button type="button" @click="noteOffline(t('drive.share')); menu = null">{{ t('drive.share') }}</button>
-      <button type="button" @click="noteOffline(t('drive.star')); menu = null">{{ t('drive.star') }}</button>
+      <button v-if="canWrite && !atRoot && selectedItems.length === 1 && !(menu && isProtectedBin(menu.item))" type="button" @click="openRename(); menu = null">{{ t('drive.rename') }}</button>
+      <button v-if="canWrite && !atRoot && selectedItems.length === 1 && !(menu && isProtectedBin(menu.item))" type="button" @click="openMove(); menu = null">{{ t('drive.move') }}</button>
+      <button v-if="canCompress" type="button" @click="compressSelected(); menu = null">{{ t('drive.compress') }}</button>
+      <button v-if="canExtract" type="button" @click="extractSelected(); menu = null">{{ t('drive.extract') }}</button>
+      <button v-if="canExtract" type="button" @click="openExtractTo(); menu = null">{{ t('drive.extractTo') }}</button>
+      <button
+        v-if="inTrash ? canRestore : canWrite && !atRoot && !(menu && isProtectedBin(menu.item))"
+        type="button"
+        @click="onMenuTrashAction"
+      >{{ inTrash ? t('drive.restore') : t('drive.delete') }}</button>
     </div>
 
-    <div v-if="moveOpen && selected" class="arc__modal" @click.self="closeMove">
+    <div v-if="moveOpen && selectedItems.length" class="arc__modal" @click.self="closeMove">
       <FolderPicker
         :roots="roots"
-        :moving="selected"
+        :moving="selectedItems"
         :source-crumbs="crumbs"
         :busy="busy"
         @confirm="onMoveConfirm"
         @cancel="closeMove"
+      />
+    </div>
+
+    <div v-if="extractOpen && selectedItems.length" class="arc__modal" @click.self="closeExtractTo">
+      <FolderPicker
+        :roots="roots"
+        :moving="selectedItems"
+        :source-crumbs="crumbs"
+        :busy="busy"
+        allow-same-place
+        :title="t('drive.extractTitle')"
+        :confirm-label="t('drive.extractHere')"
+        @confirm="onExtractConfirm"
+        @cancel="closeExtractTo"
       />
     </div>
 
@@ -290,7 +316,19 @@ import { formatBytes, formatStamp } from '@/utils/formatFile'
 import { stillFromBlob } from '@/utils/posterFrame'
 import { archivalDisplayName, decodeFileName } from '@/utils/text'
 import { canWriteInFolder } from '@/utils/driveAccess'
-import { isFileDrag, isForbiddenMoveDest, isSameFolder } from '@/utils/moveDest'
+import {
+  isFileDrag,
+  isForbiddenMoveDest,
+  isSameFolder,
+} from '@/utils/moveDest'
+import { selectedCountMessage, updateSelection } from '@/utils/selection'
+import {
+  findRecycleBin,
+  isInTrash,
+  isProtectedRecycleBin,
+  isRecycleBinName,
+  trashItemCount,
+} from '@/utils/recycleBin'
 import FileCard from '@/components/drive/FileCard.vue'
 import CyanotypeMedia from '@/components/drive/CyanotypeMedia.vue'
 import ArchiveFrame from '@/components/drive/ArchiveFrame.vue'
@@ -298,9 +336,14 @@ import FolderPicker from '@/components/drive/FolderPicker.vue'
 import Timeboard from '@/components/drive/Timeboard.vue'
 import ConcreteVoid from '@/components/drive/ConcreteVoid.vue'
 
-type Channel = 'mine' | 'public' | 'root'
+type Channel = 'mine' | 'public' | 'root' | 'trash'
 type SortKey = 'name' | 'type' | 'size' | 'time'
-type DialogState = { title: string; field: boolean; value: string; kind: 'create' | 'rename' | 'delete' }
+type DialogState = {
+  title: string
+  field: boolean
+  value: string
+  kind: 'create' | 'rename' | 'delete'
+}
 
 const { t, locale } = useI18n()
 const { status: linkStatus, syncLabel, pillLabel } = useApiLink()
@@ -342,6 +385,7 @@ const sortKey = ref<SortKey>('name')
 const sortOpen = ref(false)
 const view = ref<'grid' | 'list'>('grid')
 const selected = ref<FilesVO | null>(null)
+const selectedNames = ref<string[]>([])
 const reveal = ref(true)
 const exposing = ref(false)
 const dragNode = ref<FilesVO | null>(null)
@@ -352,6 +396,7 @@ const previews = reactive<Record<string, string>>({})
 const menu = ref<{ x: number; y: number; item: FilesVO } | null>(null)
 const dialog = ref<DialogState | null>(null)
 const moveOpen = ref(false)
+const extractOpen = ref(false)
 const prefs = usePrefsStore()
 
 const {
@@ -371,23 +416,84 @@ const {
   goTo,
   createFolder,
   renameItem,
-  removeItem,
+  trashItem,
+  trashItems,
+  restoreItem,
+  trashLabelOf,
   uploadPicked,
   downloadItem,
   moveItem,
+  compressItem,
+  extractItem,
   blobForItem,
   usedBytes,
   goInto,
+  goPath,
+  ensureRecycleBin,
 } = useDriveFiles()
+
+const roomRoot = computed(() => {
+  if (!auth.user) {
+    return null
+  }
+  return roots.value.find((node) => node.fileName === String(auth.user?.userId)) ?? null
+})
+const inTrash = computed(() => isInTrash(crumbs.value, auth.user?.userId))
+const trashHasItems = computed(() => trashItemCount(roomRoot.value) > 0)
+const selectedItems = computed(() =>
+  currentItems.value.filter((item) => selectedNames.value.includes(item.fileName)),
+)
+const selectedIsProtectedBin = computed(() =>
+  selectedItems.value.some((item) =>
+    isProtectedRecycleBin(crumbs.value, item, auth.user?.userId),
+  ),
+)
 
 const usedLabel = computed(() => (usedBytes.value > 0 ? formatBytes(usedBytes.value) : '0 B'))
 const usedPct = computed(() => Math.min(100, (usedBytes.value / (CAP_GB * 1024 * 1024 * 1024)) * 100))
 const sortLabel = computed(
   () => sortOptions.value.find((opt) => opt.value === sortKey.value)?.label ?? t('drive.sortName'),
 )
-const canActDownload = computed(() => Boolean(selected.value?.isFile && canDownload.value))
-const canActWrite = computed(() => Boolean(selected.value && canWrite.value && !atRoot.value))
-const canActMeta = computed(() => Boolean(selected.value))
+const canActDownload = computed(
+  () => selectedItems.value.length === 1 && Boolean(selected.value?.isFile && canDownload.value),
+)
+const canActWrite = computed(() =>
+  Boolean(
+    selectedItems.value.length > 0 &&
+      canWrite.value &&
+      !atRoot.value &&
+      !selectedIsProtectedBin.value,
+  ),
+)
+const canRestore = computed(
+  () =>
+    selectedItems.value.length === 1 &&
+    Boolean(selected.value && inTrash.value && canWrite.value && !atRoot.value),
+)
+const canActMeta = computed(() => selectedItems.value.length === 1)
+const canCompress = computed(
+  () =>
+    canActWrite.value &&
+    !inTrash.value &&
+    selectedItems.value.length === 1,
+)
+const canBatchMove = computed(
+  () => canActWrite.value && selectedItems.value.length === 1,
+)
+const canExtract = computed(
+  () =>
+    canActWrite.value &&
+    !inTrash.value &&
+    selectedItems.value.length > 0 &&
+    selectedItems.value.every(
+      (item) => item.isFile && item.fileName.toLowerCase().endsWith('.zip'),
+    ),
+)
+const selectedLabel = computed(() =>
+  selectedItems.value.length === 0
+    ? t('drive.selectedNone')
+    : t('drive.selectedCount', { count: selectedItems.value.length }),
+)
 const canDragItems = computed(() => canWrite.value && !atRoot.value)
 const selNote = computed(
   () => message.value || offlineNote.value || (loading.value || busy.value ? t('drive.loading') : ''),
@@ -407,7 +513,7 @@ const visibleItems = computed(() => {
     items = items.filter((item) => {
       const raw = item.fileName.toLowerCase()
       const decoded = decodeFileName(item.fileName).toLowerCase()
-      const shown = archivalDisplayName(labelOf(item.fileName)).toLowerCase()
+      const shown = archivalDisplayName(itemLabel(item)).toLowerCase()
       return raw.includes(q) || decoded.includes(q) || shown.includes(q)
     })
   }
@@ -420,10 +526,10 @@ const visibleItems = computed(() => {
       return (a.lastModified || 0) - (b.lastModified || 0)
     }
     if (sortKey.value === 'type') {
-      return typeLabel(kindOf(a), a.fileName).localeCompare(typeLabel(kindOf(b), b.fileName))
+      return typeLabel(kindOf(a), itemLabel(a)).localeCompare(typeLabel(kindOf(b), itemLabel(b)))
     }
-    return archivalDisplayName(labelOf(a.fileName)).localeCompare(
-      archivalDisplayName(labelOf(b.fileName)),
+    return archivalDisplayName(itemLabel(a)).localeCompare(
+      archivalDisplayName(itemLabel(b)),
       locale.value,
     )
   })
@@ -437,10 +543,21 @@ function crumbLabel(name: string) {
   if (auth.user && name === String(auth.user.userId)) {
     return t('drive.myDrive')
   }
+  if (isRecycleBinName(name)) {
+    return t('drive.trash')
+  }
   return archivalDisplayName(name)
 }
 
+function itemLabel(item: { fileName: string }) {
+  return inTrash.value ? trashLabelOf(item.fileName) : labelOf(item.fileName)
+}
+
 function syncChannel() {
+  if (isInTrash(crumbs.value, auth.user?.userId)) {
+    channel.value = 'trash'
+    return
+  }
   const top = crumbs.value[0]
   if (!top) {
     channel.value = 'root'
@@ -457,30 +574,55 @@ function syncChannel() {
   channel.value = 'root'
 }
 
+function isProtectedBin(node: FilesVO) {
+  return isProtectedRecycleBin(crumbs.value, node, auth.user?.userId)
+}
+
+function clearSelection() {
+  selected.value = null
+  selectedNames.value = []
+  menu.value = null
+}
+
+async function openTrash() {
+  if (!auth.user) {
+    return
+  }
+  const userId = String(auth.user.userId)
+  const binName = (await ensureRecycleBin()) ?? findRecycleBin(roomRoot.value)?.fileName
+  if (!binName) {
+    message.value = t('drive.trashCreateFailed')
+    return
+  }
+  goPath([userId, binName])
+  clearSelection()
+  syncChannel()
+}
+
 function openMine() {
   if (!auth.user) {
     return
   }
   goInto(String(auth.user.userId))
-  selected.value = null
+  clearSelection()
   syncChannel()
 }
 
 function openPublic() {
   goInto('public')
-  selected.value = null
+  clearSelection()
   syncChannel()
 }
 
 function openRoot() {
   goRoot()
-  selected.value = null
+  clearSelection()
   syncChannel()
 }
 
 function jumpTo(index: number) {
   goTo(index)
-  selected.value = null
+  clearSelection()
   syncChannel()
 }
 
@@ -493,17 +635,32 @@ function noteOffline(name: string) {
   offlineNote.value = `${name}: ${t('drive.unavailable')}`
 }
 
-function select(item: FilesVO) {
-  selected.value = item
+function select(item: FilesVO, event?: MouseEvent) {
+  selectedNames.value = updateSelection(
+    selectedNames.value,
+    item.fileName,
+    Boolean(event?.ctrlKey || event?.metaKey),
+  )
+  selected.value = selectedNames.value.includes(item.fileName)
+    ? item
+    : (currentItems.value.find(
+        (node) => node.fileName === selectedNames.value[selectedNames.value.length - 1],
+      ) ?? null)
   reveal.value = true
   menu.value = null
-  void warmPreview(item)
+  if (selected.value) {
+    void warmPreview(selected.value)
+  }
 }
 
 function openItem(item: FilesVO) {
   if (!item.isFile) {
+    if (inTrash.value) {
+      message.value = t('drive.trashRestoreWhole')
+      return
+    }
     enter(item)
-    selected.value = null
+    clearSelection()
     syncChannel()
     return
   }
@@ -511,6 +668,9 @@ function openItem(item: FilesVO) {
 }
 
 function openMenu(event: MouseEvent, item: FilesVO) {
+  if (!selectedNames.value.includes(item.fileName)) {
+    selectedNames.value = [item.fileName]
+  }
   selected.value = item
   menu.value = { x: event.clientX, y: event.clientY, item }
 }
@@ -579,8 +739,12 @@ function canDropInto(item: FilesVO): boolean {
 }
 
 function onItemDragStart(item: FilesVO) {
+  if (isProtectedBin(item)) {
+    return
+  }
   dragNode.value = item
   selected.value = item
+  selectedNames.value = [item.fileName]
   exposing.value = false
 }
 
@@ -633,7 +797,7 @@ async function dropMoveTo(dest: string[]) {
   }
   await moveItem(item, toServerPath(dest))
   if (!message.value) {
-    selected.value = null
+    clearSelection()
   }
 }
 
@@ -661,9 +825,51 @@ function onDropIntoFolder(item: FilesVO) {
 
 function onDropTrash() {
   dropSlot.value = ''
-  if (dragNode.value) {
-    noteOffline(t('drive.trash'))
+  const item = dragNode.value
+  if (!item || !canDragItems.value) {
+    return
   }
+  if (isProtectedBin(item)) {
+    message.value = t('drive.cannotDeleteTrash')
+    return
+  }
+  if (inTrash.value) {
+    return
+  }
+  void trashItem(item).then(() => {
+    if (!message.value) {
+      clearSelection()
+    }
+  })
+}
+
+async function onRestore(item: FilesVO) {
+  if (crumbs.value.length > 2) {
+    message.value = t('drive.trashRestoreWhole')
+    return
+  }
+  await restoreItem(item)
+  if (!message.value) {
+    clearSelection()
+  }
+}
+
+function onMenuTrashAction() {
+  const item = menu.value?.item
+  menu.value = null
+  if (inTrash.value) {
+    if (item) {
+      void onRestore(item)
+    }
+    return
+  }
+  if (item) {
+    selected.value = item
+    if (!selectedNames.value.includes(item.fileName)) {
+      selectedNames.value = [item.fileName]
+    }
+  }
+  confirmDelete()
 }
 
 function onBrowserDragEnter(event: DragEvent) {
@@ -705,7 +911,7 @@ function openCreate() {
 }
 
 function openRename() {
-  if (!selected.value) {
+  if (!selected.value || selectedItems.value.length !== 1) {
     return
   }
   dialog.value = {
@@ -717,7 +923,11 @@ function openRename() {
 }
 
 function openMove() {
-  if (!selected.value || atRoot.value || !canWrite.value) {
+  if (selectedItems.value.length === 0 || atRoot.value || !canWrite.value) {
+    return
+  }
+  if (selectedItems.value.length > 1) {
+    message.value = t('drive.batchMoveUnavailable')
     return
   }
   moveOpen.value = true
@@ -730,19 +940,85 @@ function closeMove() {
 }
 
 async function onMoveConfirm(targetDir: string) {
-  const item = selected.value
-  if (!item) {
+  const item = selectedItems.value[0] ?? selected.value
+  if (!item || selectedItems.value.length !== 1) {
+    moveOpen.value = false
+    message.value = t('drive.batchMoveUnavailable')
     return
   }
   await moveItem(item, targetDir)
   moveOpen.value = false
   if (!message.value) {
-    selected.value = null
+    clearSelection()
   }
 }
 
 function confirmDelete() {
-  dialog.value = { title: t('drive.deleteTitle'), field: false, value: '', kind: 'delete' }
+  if (selectedItems.value.length === 0 || inTrash.value) {
+    return
+  }
+  if (selectedItems.value.some(isProtectedBin)) {
+    message.value = t('drive.cannotDeleteTrash')
+    return
+  }
+  dialog.value = {
+    title: t('drive.trashTitle'),
+    field: false,
+    value: '',
+    kind: 'delete',
+  }
+}
+
+async function compressSelected() {
+  if (!canCompress.value || !selected.value) {
+    return
+  }
+  await compressItem(selected.value)
+  if (!message.value) {
+    clearSelection()
+  }
+}
+
+async function extractSelected() {
+  if (!canExtract.value) {
+    return
+  }
+  await runExtract(undefined)
+}
+
+function openExtractTo() {
+  if (!canExtract.value) {
+    return
+  }
+  extractOpen.value = true
+}
+
+function closeExtractTo() {
+  if (!busy.value) {
+    extractOpen.value = false
+  }
+}
+
+async function onExtractConfirm(parentDir: string) {
+  extractOpen.value = false
+  await runExtract(parentDir)
+}
+
+async function runExtract(parentDir: string | undefined) {
+  const items = [...selectedItems.value]
+  let succeeded = 0
+  const failedNames: string[] = []
+  for (const item of items) {
+    message.value = ''
+    await extractItem(item, parentDir)
+    if (message.value) {
+      failedNames.push(itemLabel(item))
+    } else {
+      succeeded += 1
+    }
+  }
+  clearSelection()
+  message.value = selectedCountMessage(succeeded, failedNames, t('drive.extract'), locale.value)
 }
 
 async function submitDialog() {
@@ -755,9 +1031,16 @@ async function submitDialog() {
     await createFolder(current.value)
   } else if (current.kind === 'rename' && item) {
     await renameItem(item, current.value)
-  } else if (current.kind === 'delete' && item) {
-    await removeItem(item)
-    selected.value = null
+  } else if (current.kind === 'delete') {
+    const items = [...selectedItems.value]
+    await trashItems(items)
+    if (!message.value) {
+      clearSelection()
+      message.value =
+        items.length > 1
+          ? selectedCountMessage(items.length, [], t('drive.delete'), locale.value)
+          : ''
+    }
   }
   dialog.value = null
 }
@@ -777,11 +1060,11 @@ function onKey(event: KeyboardEvent) {
     return
   }
   if (event.key === 'Escape') {
-    selected.value = null
-    menu.value = null
+    clearSelection()
     dialog.value = null
     sortOpen.value = false
     moveOpen.value = false
+    extractOpen.value = false
   }
 }
 
@@ -868,10 +1151,15 @@ onUnmounted(() => {
 }
 
 .arc__nav button.is-on,
+.arc__nav button.is-live,
 .arc__nav button.is-drop,
 .arc__title button.is-drop,
 .arc__tools > button.is-on {
   color: var(--arc-lime);
+}
+
+.arc__nav button.is-live {
+  opacity: 0.85;
 }
 
 .arc__nav button.is-drop,

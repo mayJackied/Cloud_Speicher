@@ -21,6 +21,9 @@ export interface DeleteFileDTO {
   path: string
 }
 
+/** 批量删除：`POST /file/deleteFiles`，body 为 DeleteFileDTO 数组。 */
+export type DeleteFilesDTO = DeleteFileDTO[]
+
 export interface RenameFileDTO {
   path: string
   newName: string
@@ -30,7 +33,7 @@ export interface DownloadFileDTO {
   path: string
 }
 
-/** JSON：`path` + `targetDir`（驼峰；空字符串 = 源文件父目录） */
+/** JSON：path + 	argetDir（驼峰；空字符串 = 源文件父目录） */
 export interface ZipFileDTO {
   path: string
   targetDir: string
@@ -68,6 +71,18 @@ export const FILE_STORAGE_PREFIX = '../files'
 
 export function toServerPath(segments: readonly string[]): string {
   return [FILE_STORAGE_PREFIX, ...segments].join('/')
+}
+
+/** 目录 + 文件名。已带同一文件名则不重复拼。 */
+export function joinServerPath(dir: string, name: string): string {
+  const base = dir.replace(/[\\/]+$/, '').replace(/\\/g, '/')
+  if (!name) {
+    return base
+  }
+  if (base === name || base.endsWith(`/${name}`)) {
+    return base
+  }
+  return `${base}/${name}`
 }
 
 function asRecord(data: unknown): Record<string, unknown> | null {

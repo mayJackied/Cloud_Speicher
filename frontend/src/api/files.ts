@@ -1,4 +1,4 @@
-import { api } from './client'
+import { api, postForm } from './client'
 import type {
   DeleteFileDTO,
   DownloadFileDTO,
@@ -23,24 +23,25 @@ export function deleteFile(dto: DeleteFileDTO) {
   return api.post<Result<null>>('/file/deleteFile', dto)
 }
 
+export function deleteFiles(dtos: DeleteFileDTO[]) {
+  return api.post<Result<null>>('/file/deleteFiles', dtos)
+}
+
 export function renameFile(dto: RenameFileDTO) {
   return api.post<Result<null>>('/file/renameFile', { path: dto.path, new_name: dto.newName })
 }
 
-export function uploadFile(path: string, file: File) {
+export function uploadFile(dir: string, file: File) {
   const utf8File = asUtf8UploadFile(file)
   const body = new FormData()
-  body.append('path', path)
-  body.append('fileName', utf8File.name)
+  // path = 已存在的目标文件夹；文件名只取 multipart file part 的 filename。
+  body.append('path', dir)
   body.append('file', utf8File, utf8File.name)
-  return api.post<Result<null>>('/file/uploadFile', body, {
-    timeout: 0,
-    params: { path },
-  })
+  return postForm<Result<null>>('/file/uploadFile', body)
 }
 
 export function downloadFile(dto: DownloadFileDTO) {
-  return api.post('/file/downloadFile', dto, { responseType: 'blob', timeout: 0 })
+  return api.post('/file/downloadFile', dto, { responseType: 'blob', timeout: 60000 })
 }
 
 export function zipFile(dto: ZipFileDTO) {

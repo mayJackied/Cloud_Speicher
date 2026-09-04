@@ -1,6 +1,6 @@
 <template>
   <div class="pick" @click.stop @mousedown.stop>
-    <p class="pick__title">{{ t('drive.moveTitle') }}</p>
+    <p class="pick__title">{{ titleText }}</p>
     <p class="pick__path">{{ pathLabel }}</p>
     <div class="pick__roots">
       <button
@@ -24,7 +24,7 @@
     </ul>
     <p v-if="blocked" class="pick__warn">{{ t('drive.cannotMoveHere') }}</p>
     <div class="pick__actions">
-      <button type="button" :disabled="blocked || samePlace || busy" @click="confirm">{{ busy ? t('drive.loading') : t('drive.moveHere') }}</button>
+      <button type="button" :disabled="blocked || (!allowSamePlace && samePlace) || busy" @click="confirm">{{ busy ? t('drive.loading') : confirmText }}</button>
       <button type="button" :disabled="busy" @click="$emit('cancel')">{{ t('drive.abort') }}</button>
     </div>
   </div>
@@ -37,15 +37,24 @@ import { useAuthStore } from '@/stores/auth'
 import type { FilesVO } from '@/types/file'
 import { childrenOf, toServerPath } from '@/types/file'
 import { canWriteInFolder } from '@/utils/driveAccess'
-import { isForbiddenMoveDest, isSameFolder } from '@/utils/moveDest'
+import { isAnyForbiddenMoveDest, isSameFolder } from '@/utils/moveDest'
 import { archivalDisplayName } from '@/utils/text'
 
-const props = defineProps<{
-  roots: FilesVO[]
-  moving: FilesVO
-  sourceCrumbs: string[]
-  busy?: boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    roots: FilesVO[]
+    moving: FilesVO[]
+    sourceCrumbs: string[]
+    busy?: boolean
+    allowSamePlace?: boolean
+    title?: string
+    confirmLabel?: string
+  }>(),
+  {
+    busy: false,
+    allowSamePlace: false,
+  },
+)
 
 const emit = defineEmits<{
   confirm: [targetDir: string]
@@ -55,6 +64,9 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const auth = useAuthStore()
 const crumbs = ref<string[]>([...props.sourceCrumbs])
+
+const titleText = computed(() => props.title || t('drive.moveTitle'))
+const confirmText = computed(() => props.confirmLabel || t('drive.moveHere'))
 
 const accessOf = (path: string[]) => ({
   crumbs: path,
@@ -97,9 +109,12 @@ const folders = computed(() => {
       return false
     }
     return !(
-      !props.moving.isFile &&
-      node.fileName === props.moving.fileName &&
-      isSameFolder(crumbs.value, props.sourceCrumbs)
+      props.moving.some(
+        (moving) =>
+          !moving.isFile &&
+          node.fileName === moving.fileName &&
+          isSameFolder(crumbs.value, props.sourceCrumbs),
+      )
     )
   })
 })
@@ -107,7 +122,7 @@ const folders = computed(() => {
 const blocked = computed(
   () =>
     !canWriteInFolder(accessOf(crumbs.value)) ||
-    isForbiddenMoveDest(crumbs.value, props.sourceCrumbs, props.moving.fileName, props.moving.isFile),
+    isAnyForbiddenMoveDest(crumbs.value, props.sourceCrumbs, props.moving),
 )
 
 const samePlace = computed(() => isSameFolder(crumbs.value, props.sourceCrumbs))
@@ -131,7 +146,7 @@ function enter(folder: FilesVO) {
 }
 
 function confirm() {
-  if (blocked.value || samePlace.value || props.busy) {
+  if (blocked.value || (!props.allowSamePlace && samePlace.value) || props.busy) {
     return
   }
   emit('confirm', toServerPath(crumbs.value))

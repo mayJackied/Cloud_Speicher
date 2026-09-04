@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   archivalDisplayName,
   asciiUploadAlias,
+  availableCopyName,
   decodeFileName,
   filenameFromContentDisposition,
   isAsciiFileName,
@@ -39,6 +40,17 @@ describe('CJK / UTF-8 file names', () => {
     expect(asciiUploadAlias('笔记.DOCX', 'x1')).toBe('ux1.DOCX')
     expect(isAsciiFileName('uabc.png')).toBe(true)
     expect(isAsciiFileName('风景.png')).toBe(false)
+  })
+
+  it('重名按 stem(n).ext 递增', () => {
+    expect(availableCopyName([], 'GERMANY-MASTERS.XLSX')).toBe('GERMANY-MASTERS.XLSX')
+    expect(availableCopyName(['GERMANY-MASTERS.XLSX'], 'GERMANY-MASTERS.XLSX')).toBe(
+      'GERMANY-MASTERS(1).XLSX',
+    )
+    expect(
+      availableCopyName(['GERMANY-MASTERS.XLSX', 'GERMANY-MASTERS(1).XLSX'], 'GERMANY-MASTERS.XLSX'),
+    ).toBe('GERMANY-MASTERS(2).XLSX')
+    expect(availableCopyName(['头疼.GIF'], '头疼.GIF')).toBe('头疼(1).GIF')
   })
 
   it('拉丁字母大写，CJK 保持原样', () => {

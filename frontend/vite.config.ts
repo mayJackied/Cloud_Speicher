@@ -4,7 +4,7 @@ import vue from '@vitejs/plugin-vue'
 import { defineConfig, type Plugin } from 'vite'
 import { fileBytesFromStored } from './src/dev/multipart'
 import { mimeFromName } from './src/utils/fileKind'
-import { decodeFileName } from './src/utils/text'
+import { decodeFileName, availableCopyName } from './src/utils/text'
 
 function readRaw(req: IncomingMessage): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
@@ -129,7 +129,7 @@ function roomRoot(userId: number): MockNode {
   const key = String(userId)
   let node = roomRoots.get(key)
   if (!node) {
-    node = mockNode(key, false, null)
+    node = mockNode(key, false, [mockNode('recycle_bin', false, null)])
     roomRoots.set(key, node)
   }
   return node
@@ -232,7 +232,7 @@ function mockApiPlugin(): Plugin {
             void readRaw(req).then((bytes) => {
               const body = new TextDecoder('latin1').decode(bytes)
               const path = multipartField(body, 'path') || queryPath
-              const fileName =
+              const uploadedName =
                 decodeFileName(multipartField(body, 'fileName')) || multipartFilename(body)
               const denied = fileWritable(path, token)
               if (denied) {
@@ -240,25 +240,36 @@ function mockApiPlugin(): Plugin {
                 return
               }
               const segments = parseFilePath(path)
-              if (!segments || segments.length === 0 || !fileName) {
+              if (!segments || segments.length === 0) {
                 sendJson(res, fail(20004))
                 return
               }
-              const parent = findMockNode(userId, segments)
+              const asFolder = findMockNode(userId, segments)
+              const parentSeg =
+                asFolder && !asFolder.is_file ? segments : segments.slice(0, -1)
+              const fileName =
+                asFolder && !asFolder.is_file
+                  ? uploadedName
+                  : uploadedName || segments[segments.length - 1]
+              if (!fileName) {
+                sendJson(res, fail(20004))
+                return
+              }
+              const parent = findMockNode(userId, parentSeg)
               if (!parent || parent.is_file) {
                 sendJson(res, fail(20004))
                 return
               }
               const kids = parent.filesVOS ?? []
-              if (kids.some((node) => node.fileName === fileName)) {
-                sendJson(res, fail(20006))
-                return
-              }
+              const storedName = availableCopyName(
+                kids.map((node) => node.fileName),
+                fileName,
+              )
               const fileBytes = fileBytesFromStored(bytes)
-              const stored = mockNode(fileName, true)
+              const stored = mockNode(storedName, true)
               stored.length = fileBytes.length
               parent.filesVOS = [...kids, stored]
-              mockFileBytes.set(`${path.replace(/\/$/, '')}/${fileName}`, fileBytes)
+              mockFileBytes.set(`${FILE_PREFIX}/${[...parentSeg, storedName].join('/')}`, fileBytes)
               sendJson(res, ok(null))
             })
             return
@@ -270,6 +281,113 @@ function mockApiPlugin(): Plugin {
               parsed = JSON.parse(raw) as Record<string, unknown>
             } catch {
               sendJson(res, fail(99999), 400)
+              return
+            }
+
+            if (url === '/api/file/deleteFiles') {
+              const list = Array.isArray(parsed) ? parsed : []
+              for (const item of list) {
+                const sourcePath = String((item as { path?: string }).path ?? '')
+                const denied = fileWritable(sourcePath, token)
+                if (denied) {
+                  sendJson(res, fail(denied))
+                  return
+                }
+                const sourceSegments = parseFilePath(sourcePath)
+                if (!sourceSegments || sourceSegments.length < 2) {
+                  sendJson(res, fail(20001))
+                  return
+                }
+                const parent = findMockNode(userId, sourceSegments.slice(0, -1))
+                const name = sourceSegments[sourceSegments.length - 1]
+                const kids = parent?.filesVOS
+                const target = kids?.find((node) => node.fileName === name)
+                if (!parent || !kids || !target) {
+                  sendJson(res, fail(20004))
+                  return
+                }
+                parent.filesVOS = kids.filter((node) => node.fileName !== name)
+                const bin = findMockNode(userId, [String(userId), 'recycle_bin'])
+                if (bin && !bin.is_file) {
+                  bin.filesVOS = [...(bin.filesVOS ?? []), target]
+                }
+              }
+              sendJson(res, ok(null))
+              return
+            }
+
+            if (url === '/api/file/zip') {
+              const sourcePath = String(parsed.path ?? '')
+              let targetDir = String(parsed.targetDir ?? '')
+              if (!targetDir) {
+                const segs = parseFilePath(sourcePath)
+                targetDir = segs && segs.length > 1 ? `${FILE_PREFIX}/${segs.slice(0, -1).join('/')}` : sourcePath
+              }
+              const denied = fileWritable(targetDir, token)
+              if (denied) {
+                sendJson(res, fail(denied))
+                return
+              }
+              const sourceSegments = parseFilePath(sourcePath)
+              const targetSegments = parseFilePath(targetDir)
+              const source = sourceSegments && findMockNode(userId, sourceSegments)
+              const target = targetSegments && findMockNode(userId, targetSegments)
+              if (!source || !target || target.is_file) {
+                sendJson(res, fail(20004))
+                return
+              }
+              const archiveName = `${source.fileName.replace(/\.zip$/i, '')}.zip`
+              if (target.filesVOS?.some((node) => node.fileName === archiveName)) {
+                sendJson(res, fail(20006))
+                return
+              }
+              const archive = mockNode(archiveName, true)
+              archive.length = Math.max(1, source.length)
+              target.filesVOS = [...(target.filesVOS ?? []), archive]
+              sendJson(res, ok(null))
+              return
+            }
+
+            if (url === '/api/file/unzip') {
+              const sourcePath = String(parsed.path ?? '')
+              const targetDir = String(parsed.targetDir ?? '')
+              const denied = fileWritable(targetDir, token)
+              if (denied) {
+                sendJson(res, fail(denied))
+                return
+              }
+              const sourceSegments = parseFilePath(sourcePath)
+              const targetSegments = parseFilePath(targetDir)
+              const source = sourceSegments && findMockNode(userId, sourceSegments)
+              if (
+                !source ||
+                !source.is_file ||
+                !source.fileName.toLowerCase().endsWith('.zip') ||
+                !targetSegments ||
+                targetSegments.length === 0
+              ) {
+                sendJson(res, fail(20004))
+                return
+              }
+              let target = findMockNode(userId, targetSegments)
+              if (!target) {
+                const parent = findMockNode(userId, targetSegments.slice(0, -1))
+                const folderName = targetSegments[targetSegments.length - 1]
+                if (!parent || parent.is_file || !folderName) {
+                  sendJson(res, fail(20004))
+                  return
+                }
+                if (parent.filesVOS?.some((node) => node.fileName === folderName)) {
+                  sendJson(res, fail(20006))
+                  return
+                }
+                target = mockNode(folderName, false, null)
+                parent.filesVOS = [...(parent.filesVOS ?? []), target]
+              } else if (target.is_file) {
+                sendJson(res, fail(20004))
+                return
+              }
+              sendJson(res, ok(null))
               return
             }
 
@@ -578,6 +696,16 @@ export default defineConfig({
       '/api': {
         target: 'http://8.130.215.175:8080',
         changeOrigin: true,
+        timeout: 0,
+        proxyTimeout: 0,
+        configure(proxy) {
+          proxy.on('proxyReq', (proxyReq, req) => {
+            const type = req.headers['content-type']
+            if (typeof type === 'string' && type.includes('multipart/form-data')) {
+              proxyReq.setHeader('Content-Type', type)
+            }
+          })
+        },
       },
     },
   },

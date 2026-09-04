@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isLegalFileName, readFilesVO, readFilesVOList, toServerPath, bytesOfNode } from './file'
+import { isLegalFileName, joinServerPath, readFilesVO, readFilesVOList, toServerPath, bytesOfNode } from './file'
 
 describe('FilesVO / path', () => {
   it('is_file 映射成 isFile，并保留子树', () => {
@@ -30,6 +30,11 @@ describe('FilesVO / path', () => {
   it('操作 path 拼 ../files + 面包屑', () => {
     expect(toServerPath(['public', 'document', 'a.txt'])).toBe('../files/public/document/a.txt')
     expect(toServerPath(['9'])).toBe('../files/9')
+  })
+
+  it('joinServerPath 给 rename/download 用，上传 path 仍是文件夹', () => {
+    expect(joinServerPath('../files/8', 'pic.jpg')).toBe('../files/8/pic.jpg')
+    expect(joinServerPath('../files/8/pic.jpg', 'pic.jpg')).toBe('../files/8/pic.jpg')
   })
 
   it('文件名规则', () => {

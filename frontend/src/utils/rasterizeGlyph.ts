@@ -22,7 +22,7 @@ export function charAtInk(ink: number, ramp: string): string {
 }
 
 /** alpha 高且越黑，字符越密。透明处留白。 */
-export function charForInk(alpha: number, luminance: number, ramp = GLYPH_STYLES.dots): string {
+export function charForInk(alpha: number, luminance: number, ramp: string = GLYPH_STYLES.dots): string {
   return charAtInk(alpha * (1 - luminance), ramp)
 }
 
@@ -30,7 +30,7 @@ export function glyphFromRgba(
   data: Uint8ClampedArray | Uint8Array,
   width: number,
   height: number,
-  ramp = GLYPH_STYLES.dots,
+  ramp: string = GLYPH_STYLES.dots,
 ): string {
   const lines: string[] = []
   for (let y = 0; y < height; y += 1) {

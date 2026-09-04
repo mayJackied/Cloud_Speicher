@@ -25,6 +25,16 @@ export function isSameFolder(destCrumbs: readonly string[], sourceCrumbs: readon
   return destCrumbs.length === sourceCrumbs.length && destCrumbs.every((name, index) => name === sourceCrumbs[index])
 }
 
+export function isAnyForbiddenMoveDest(
+  destCrumbs: readonly string[],
+  sourceCrumbs: readonly string[],
+  moving: readonly { fileName: string; isFile: boolean }[],
+): boolean {
+  return moving.some((item) =>
+    isForbiddenMoveDest(destCrumbs, sourceCrumbs, item.fileName, item.isFile),
+  )
+}
+
 export function isFileDrag(event: DragEvent): boolean {
   return Array.from(event.dataTransfer?.types ?? []).includes('Files')
 }
