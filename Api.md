@@ -123,7 +123,13 @@ VO: `Void`
 
 *delete_file*　POST `/api/file/deleteFile`  
 DTO: `{ path }`  
-VO: `Void`
+VO: `Void`  
+现网语义多为**软删**进回收站（以 Java 为准）。
+
+*delete_files*　POST `/api/file/deleteFiles`  
+DTO: `DeleteFileDTO[]`（JSON 数组，每项 `{ path }`）  
+VO: `Void`  
+批量软删；前端多选删除走此接口。
 
 *rename_file*　POST `/api/file/renameFile`  
 DTO: `{ path, new_name }`  
@@ -141,16 +147,48 @@ DTO: `{ path }` JSON
 
 *zip*　POST `/api/file/zip`  
 DTO: `ZipFileDTO` `{ path, targetDir }`（驼峰；`targetDir` 必须是文件夹，空字符串 = 源文件父目录）  
-VO: `Result<Void>`
+VO: `Result<Void>`  
+前端：右键单选压缩，`targetDir` 为当前目录。
 
 *unzip*　POST `/api/file/unzip`  
 DTO: 同上 `ZipFileDTO`  
-VO: `Result<Void>`
+VO: `Result<Void>`  
+`targetDir` 为解压目标文件夹（可不存在，后端会 `mkdirs`）。前端默认在原地建**与压缩包同名**的文件夹再解入；「解压到…」先选父目录再按同样规则建夹。解压成功后前端会尽力删除目标内的 `__MACOSX`。
 
 *move_file*　POST `/api/file/moveFile`  
 DTO: `MoveFileDTO` `{ path, targetDir, fileHandle }`  
-`targetDir` 禁止为空。`fileHandle`：0 默认不处理（同名则 20006）；1 替换；2 忽略（前端一般不发）  
+`targetDir` 禁止为空。`fileHandle`：0 默认不处理（同名则 20006）；1 替换；2 忽略；部分后端还有 7（末尾编号）。前端一般发 0，且**暂不支持批量移动**。  
 VO: `Result<Void>`
+
+*delete_bin_file*　POST `/api/file/deleteBinFile`  
+DTO: `{ path }`（须在回收站路径下）  
+VO: `Void`  
+回收站内永久删除（以后端为准）。
+
+*delete_bin_all_files*　POST `/api/file/deleteBinAllFiles`  
+DTO: `DeleteBinAllFilesDTO`（路径类型：用户站 / 公共站等，以后端为准）  
+VO: `Void`  
+清空回收站。
+
+*restore_file*　POST `/api/file/restoreFile`  
+DTO: `{ path }`（回收站内项；后端用落盘路径查还原元数据）  
+VO: `Void`  
+从回收站还原。前端当前仍有一套本机软删/还原逻辑，与后端回收站 API 可并存，联调时以现网为准。
+
+### 断点传输（拟定契约，后端尚未实现）
+
+前端只依赖 `frontend/src/api/transfers.ts` 适配层；后端最终命名若变化，只改该文件。
+
+- `POST /api/file/transfer/upload/init`：`{ targetDir, fileName, totalSize, contentType?, contentHash?, chunkSize?, clientUploadId, fileHandle? }` → `TransferSessionVO`
+- `GET /api/file/transfer/upload/{transferId}`：返回服务端权威 `nextOffset`、`chunkSize`、状态和过期时间
+- `PUT /api/file/transfer/upload/{transferId}`：raw bytes；请求头 `Content-Range: bytes start-end/total`，可带 `X-Chunk-Hash`
+- `POST /api/file/transfer/upload/{transferId}/complete`：校验总长度/哈希后原子落盘
+- `DELETE /api/file/transfer/upload/{transferId}`：取消并清理临时文件
+- `POST /api/file/transfer/download/init`：`{ path, clientDownloadId }` → size、ETag、chunkSize
+- `POST /api/file/transfer/download/range`：body `{ path, transferId? }`，请求头 `Range` + `If-Range`，成功应为 `206`
+- `DELETE /api/file/transfer/download/{transferId}`：取消可选下载会话
+
+约束：UUID 必须绑定用户与文件元数据；数据库只存会话/已收区间，文件内容写临时文件；v1 严格顺序分块并校验 `offset === nextOffset`；`clientUploadId` 保证 init 幂等；重复块同 offset+同哈希应幂等；完成前校验 size/hash；取消和 TTL 到期清理；下载文件变化时 ETag 不匹配必须重新初始化。建议预留 `TRANSFER_NOT_FOUND / EXPIRED / OFFSET_MISMATCH / INCOMPLETE / ALREADY_COMPLETE / CHECKSUM_MISMATCH` 错误码。
 
 ---
 
@@ -175,9 +213,13 @@ UploadFileDTO `{ String path; MultipartFile file }`
 
 DownloadFileDTO / DeleteFileDTO `{ String path }`
 
+批量删除 body：`List<DeleteFileDTO>`（`/deleteFiles`）
+
 ZipFileDTO `{ String path; String targetDir }`
 
 MoveFileDTO `{ String path; String targetDir; Integer fileHandle }`
+
+DeleteBinAllFilesDTO：清空回收站用（字段以后端为准，常见为路径类型枚举）
 
 PO User `{ userId, password, name, isDeleted, isAdmin }`（无 documentId）
 
@@ -185,8 +227,11 @@ PO User `{ userId, password, name, isDeleted, isAdmin }`（无 documentId）
 
 ## 前端本阶段
 
-登录/注册/发码已按 **code + data + 错误码表** 接。`/drive` 已接列表与进文件夹；自己的房间可新建/重命名/删除/上传/下载。公共目录普通用户只能下载，管理员可增删改。设置页删号。  
-离线 mock 走本地；在线经 Vite 到 FRP。  
+登录/注册/发码已按 **code + data + 错误码表** 接。`/drive` 已接列表与进文件夹；自己的房间可新建/重命名/删除/上传/下载/移动。  
+**Ctrl/Cmd 多选**；多选删除走 `deleteFiles`；移动暂仅单选。  
+右键接入 **zip / unzip**（解压默认同名文件夹，「解压到…」可选父目录；清 `__MACOSX`）。  
+侧栏**回收站**可进；最近 / 收藏 / 共享仍占位。公共目录普通用户只能下载，管理员可增删改。设置页删号。  
+离线 mock 走本地；在线经 Vite 到 FRP。
 2026-08-30 现网探测：`checkUserName` / `register` / `login` / 非管理员发码 `10002` / `getFiles` 均 HTTP 200 且为 Result。JWT 30 天、无 refresh。
 
 ---
@@ -316,7 +361,13 @@ VO: `Void`
 
 *delete_file*　POST `/api/file/deleteFile`  
 DTO: `{ path }`  
-VO: `Void`
+VO: `Void`  
+Live servers typically **soft-delete** into the recycle bin (follow Java).
+
+*delete_files*　POST `/api/file/deleteFiles`  
+DTO: `DeleteFileDTO[]` (JSON array of `{ path }`)  
+VO: `Void`  
+Batch soft-delete; multi-select delete on the frontend uses this.
 
 *rename_file*　POST `/api/file/renameFile`  
 DTO: `{ path, new_name }`  
@@ -334,16 +385,45 @@ Failure: may become a `Result` error via the exception handler
 
 *zip*　POST `/api/file/zip`  
 DTO: `ZipFileDTO` `{ path, targetDir }` (camelCase; `targetDir` must be a folder; empty string = parent of source)  
-VO: `Result<Void>`
+VO: `Result<Void>`  
+UI: context-menu compress on a single selection; `targetDir` is the current folder.
 
 *unzip*　POST `/api/file/unzip`  
 DTO: same `ZipFileDTO`  
-VO: `Result<Void>`
+VO: `Result<Void>`  
+`targetDir` is the extract folder (created if missing). Frontend default: create a folder named after the archive in place, then extract into it; **Extract to…** picks a parent first. After success the UI best-effort deletes `__MACOSX` under the target.
 
 *move_file*　POST `/api/file/moveFile`  
 DTO: `MoveFileDTO` `{ path, targetDir, fileHandle }`  
-`targetDir` must not be empty. `fileHandle`: 0 default / no-op (duplicate → 20006); 1 replace; 2 ignore (frontend usually does not send this)  
+`targetDir` must not be empty. `fileHandle`: 0 default / no-op (duplicate → 20006); 1 replace; 2 ignore; some backends also use 7 (numeric suffix). Frontend usually sends 0 and **does not batch-move** yet.  
 VO: `Result<Void>`
+
+*delete_bin_file*　POST `/api/file/deleteBinFile`  
+DTO: `{ path }` (must be under recycle bin)  
+VO: `Void`
+
+*delete_bin_all_files*　POST `/api/file/deleteBinAllFiles`  
+DTO: `DeleteBinAllFilesDTO` (path type: user / public bin — follow Java)  
+VO: `Void`
+
+*restore_file*　POST `/api/file/restoreFile`  
+DTO: `{ path }` (item in recycle bin)  
+VO: `Void`
+
+### Resumable transfer (proposed; backend not implemented yet)
+
+The frontend is isolated behind `frontend/src/api/transfers.ts`.
+
+- `POST /api/file/transfer/upload/init`
+- `GET /api/file/transfer/upload/{transferId}`
+- `PUT /api/file/transfer/upload/{transferId}` with raw bytes and `Content-Range`
+- `POST /api/file/transfer/upload/{transferId}/complete`
+- `DELETE /api/file/transfer/upload/{transferId}`
+- `POST /api/file/transfer/download/init`
+- `POST /api/file/transfer/download/range` with `Range` and `If-Range` (return `206`)
+- `DELETE /api/file/transfer/download/{transferId}`
+
+The server owns `nextOffset`; upload v1 is strictly sequential and retries are idempotent. Bind UUIDs to user/file metadata, keep bytes in temporary storage rather than the database, validate size/hash before atomic commit, expire abandoned sessions, and use ETag for download resume.
 
 ---
 
@@ -368,9 +448,13 @@ UploadFileDTO `{ String path; MultipartFile file }`
 
 DownloadFileDTO / DeleteFileDTO `{ String path }`
 
+Batch delete body: `List<DeleteFileDTO>` (`/deleteFiles`)
+
 ZipFileDTO `{ String path; String targetDir }`
 
 MoveFileDTO `{ String path; String targetDir; Integer fileHandle }`
+
+DeleteBinAllFilesDTO: empty recycle bin (fields follow Java)
 
 PO User `{ userId, password, name, isDeleted, isAdmin }` (no `documentId`)
 
@@ -378,6 +462,9 @@ PO User `{ userId, password, name, isDeleted, isAdmin }` (no `documentId`)
 
 ## Frontend this phase
 
-Login / register / invite codes use **code + data + error table**. `/drive` lists files; a user's room can mkdir / rename / delete / upload / download. Public: everyone can download; only admin can write. Settings page deletes the account.  
+Login / register / invite codes use **code + data + error table**. `/drive` lists files; a user's room can mkdir / rename / delete / upload / download / move.  
+**Ctrl/Cmd multi-select**; batch delete via `deleteFiles`; move is single-select for now.  
+Context menu **zip / unzip** (same-named folder by default; Extract to… picks parent; scrub `__MACOSX`).  
+Sidebar **Trash** is usable; Recent / Starred / Shared remain placeholders. Public: everyone can download; only admin can write. Settings page deletes the account.  
 Offline mock locally; online via Vite → FRP.  
 2026-08-30 live probe: `checkUserName` / `register` / `login` / non-admin invite `10002` / `getFiles` all HTTP 200 Result. JWT is 30 days; no refresh.

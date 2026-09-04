@@ -27,6 +27,12 @@ const routes: RouteRecordRaw[] = [
     redirect: { name: 'drive' },
   },
   {
+    path: '/drive/transfers',
+    name: 'drive-transfers',
+    component: () => import('@/views/drive/Transfers.vue'),
+    meta: { requiresAuth: true, hideChrome: true },
+  },
+  {
     path: '/drive/settings',
     name: 'drive-settings',
     component: () => import('@/views/drive/Settings.vue'),

@@ -14,6 +14,7 @@ import {
 } from '@/api/files'
 import { isResultShape } from '@/dev/contract'
 import { useAuthStore } from '@/stores/auth'
+import { useTransferStore } from '@/stores/transfers'
 import { ErrorCode, messageForCode } from '@/types/errorCode'
 import { fileBytesFromStored } from '@/dev/multipart'
 import { mimeFromName } from '@/utils/fileKind'
@@ -30,7 +31,7 @@ import {
 } from '@/types/file'
 import { canDownloadInFolder, canWriteInFolder } from '@/utils/driveAccess'
 import { uniqueExtractFolderName, isMacosxJunkName } from '@/utils/extractTarget'
-import { asciiUploadAlias, availableCopyName, decodeFileName } from '@/utils/text'
+import { availableCopyName, decodeFileName } from '@/utils/text'
 import {
   RECYCLE_BIN_NAME,
   findRecycleBin,
@@ -81,6 +82,7 @@ async function resultFromBlob(data: Blob): Promise<{ code: number } | null> {
 
 export function useDriveFiles() {
   const auth = useAuthStore()
+  const transfers = useTransferStore()
   const roots = ref<FilesVO[]>([])
   const crumbs = ref<string[]>([])
   const loading = ref(false)
@@ -666,99 +668,8 @@ export function useDriveFiles() {
     if (!crumbs.value[0]) {
       return
     }
-    await mutate(async () => {
-      const listed = await getFiles()
-      if (isResultShape(listed.data) && listed.data.code === ErrorCode.OK) {
-        const tree = readFilesVOList(listed.data.data)
-        if (tree) {
-          roots.value = tree
-        }
-      }
-
-      const targetSegs = [...crumbs.value]
-      const targetDir = currentDirPath()
-      // 现网往子目录直传会落 0 字节；先传到房间/公共根再 move，内容才完整。
-      const stageRoot = crumbs.value[0]
-      const stageDir = toServerPath([stageRoot])
-      const stageNode = findNodeAt([stageRoot])
-      const stageTaken = (stageNode?.filesVOS ?? []).map((row) => row.fileName)
-      const destName = availableCopyName(
-        currentItems.value.map((node) => node.fileName),
-        finalName,
-      )
-      const stageName = availableCopyName(stageTaken, asciiUploadAlias(destName))
-      const staged = new File([file], stageName, { type: file.type, lastModified: file.lastModified })
-      const uploaded = await uploadFile(stageDir, staged)
-      if (!isResultShape(uploaded.data) || uploaded.data.code !== ErrorCode.OK) {
-        return uploaded.data
-      }
-
-      let liveSegs = [stageRoot, stageName]
-      if (stageDir !== targetDir) {
-        const moved = await moveFile({
-          path: toServerPath(liveSegs),
-          targetDir,
-          fileHandle: FileHandle.DEFAULT,
-        })
-        if (!isResultShape(moved.data) || moved.data.code !== ErrorCode.OK) {
-          try {
-            await deleteFile({ path: toServerPath(liveSegs) })
-          } catch {
-            /* keep move error */
-          }
-          return moved.data
-        }
-        liveSegs = [...targetSegs, stageName]
-      }
-
-      let liveName = stageName
-      if (liveName !== destName) {
-        let renamed = await renameFile({ path: toServerPath(liveSegs), newName: destName })
-        if (!isResultShape(renamed.data) || renamed.data.code !== ErrorCode.OK) {
-          const fallback = availableCopyName(
-            [...currentItems.value.map((node) => node.fileName), destName],
-            destName,
-          )
-          if (fallback !== destName) {
-            renamed = await renameFile({ path: toServerPath(liveSegs), newName: fallback })
-            if (isResultShape(renamed.data) && renamed.data.code === ErrorCode.OK) {
-              liveName = fallback
-              liveSegs = [...liveSegs.slice(0, -1), fallback]
-            }
-          }
-          if (!isResultShape(renamed.data) || renamed.data.code !== ErrorCode.OK) {
-            try {
-              await deleteFile({ path: toServerPath(liveSegs) })
-            } catch {
-              /* keep rename error */
-            }
-            return renamed.data
-          }
-        } else {
-          liveName = destName
-          liveSegs = [...liveSegs.slice(0, -1), destName]
-        }
-      }
-
-      const verify = await getFiles()
-      if (isResultShape(verify.data) && verify.data.code === ErrorCode.OK) {
-        const tree = readFilesVOList(verify.data.data)
-        if (tree) {
-          roots.value = tree
-        }
-        const parent = findNodeAt(targetSegs)
-        const row = (parent?.filesVOS ?? []).find((n) => n.fileName === liveName)
-        if (row?.isFile && (row.length ?? 0) === 0 && file.size > 0) {
-          try {
-            await deleteFile({ path: toServerPath([...targetSegs, liveName]) })
-          } catch {
-            /* ignore */
-          }
-          return { code: ErrorCode.FILE_OPERATION_FAILED, data: null }
-        }
-      }
-      return { code: ErrorCode.OK, data: null }
-    })
+    await transfers.enqueueUpload(file, currentDirPath())
+    message.value = '已加入传输列表'
   }
 
   async function moveItem(node: FilesVO, targetDir: string) {
@@ -970,42 +881,14 @@ export function useDriveFiles() {
       message.value = messageForCode(ErrorCode.NO_PERMISSION)
       return
     }
-    loading.value = true
-    message.value = ''
-    try {
-      const data = await blobForItem(node)
-      if (!data) {
-        if (!message.value) {
-          message.value = '下载失败'
-        }
-        return
-      }
-      const url = URL.createObjectURL(data)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = decodeFileName(node.fileName)
-      link.click()
-      URL.revokeObjectURL(url)
-    } catch (error) {
-      if (isAxiosError(error) && error.response?.data instanceof Blob) {
-        const body = await resultFromBlob(error.response.data)
-        if (body) {
-          message.value = messageForCode(body.code)
-          return
-        }
-      }
-      if (isAxiosError(error) && error.response && isResultShape(error.response.data)) {
-        message.value = messageForCode(error.response.data.code)
-        return
-      }
-      if (isAxiosError(error) && (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT')) {
-        message.value = '下载超时，请重试'
-        return
-      }
-      message.value = '无法连接服务器'
-    } finally {
-      loading.value = false
-    }
+    await transfers.enqueueDownload({
+      fileName: decodeFileName(node.fileName),
+      sourcePath: itemPath(node.fileName),
+      totalBytes: bytesOfNode(node),
+      saveLocation: '浏览器默认下载目录',
+      saveStrategy: 'browser-download',
+    })
+    message.value = '已加入传输列表'
   }
 
   return {

@@ -33,7 +33,7 @@ function readToken(): string {
   }
 }
 
-function readApiMode(): string {
+export function readApiMode(): 'online' | 'offline' {
   try {
     return localStorage.getItem('apiMode') === 'online' ? 'online' : 'offline'
   } catch {

@@ -24,6 +24,10 @@
         <button type="button" class="is-off" @click="noteOffline(t('drive.recent'))">{{ t('drive.recent') }}</button>
         <button type="button" class="is-off" @click="noteOffline(t('drive.starred'))">{{ t('drive.starred') }}</button>
         <button type="button" class="is-off" @click="noteOffline(t('drive.shared'))">{{ t('drive.shared') }}</button>
+        <router-link to="/drive/transfers">
+          {{ t('drive.transfers') }}
+          <span v-if="transfers.activeCount">[{{ transfers.activeCount }}]</span>
+        </router-link>
         <button
           type="button"
           :class="{
@@ -118,7 +122,7 @@
 
       <p class="arc__sel" :class="{ 'is-idle': !selected }">
         <span class="arc__sel-count">{{ selectedLabel }}</span>
-        <button type="button" :disabled="!canActDownload" @click="selected && downloadItem(selected)">{{ t('drive.download') }}</button>
+        <button type="button" :disabled="!canActDownload" @click="selected && queueDownload(selected)">{{ t('drive.download') }}</button>
         <button type="button" :disabled="!canActWrite || selectedItems.length !== 1" @click="openRename">{{ t('drive.rename') }}</button>
         <button type="button" :disabled="!canBatchMove" @click="openMove">{{ t('drive.move') }}</button>
         <button
@@ -246,7 +250,7 @@
 
     <div v-if="menu" class="arc__menu" :style="{ left: menu.x + 'px', top: menu.y + 'px' }" @mousedown.stop>
       <button type="button" @click="openItem(menu.item); menu = null">{{ t('drive.open') }}</button>
-      <button v-if="menu.item.isFile && canDownload" type="button" @click="downloadItem(menu.item); menu = null">
+      <button v-if="menu.item.isFile && canDownload" type="button" @click="queueDownload(menu.item); menu = null">
         {{ t('drive.download') }}
       </button>
       <button v-if="canWrite && !atRoot && selectedItems.length === 1 && !(menu && isProtectedBin(menu.item))" type="button" @click="openRename(); menu = null">{{ t('drive.rename') }}</button>
@@ -306,10 +310,12 @@ import { useRouter } from 'vue-router'
 import { logout } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
 import { usePrefsStore } from '@/stores/prefs'
+import { useTransferStore } from '@/stores/transfers'
 import { useApiLink } from '@/composables/useApiLink'
 import { useDriveFiles } from '@/composables/useDriveFiles'
 import { useI18n } from '@/composables/useI18n'
 import { bytesOfNode, toServerPath, type FilesVO } from '@/types/file'
+import type { FileSystemFileHandleLike } from '@/types/transfer'
 import { ErrorCode, messageForCode } from '@/types/errorCode'
 import { kindOf, needsPosterFrame, typeLabel } from '@/utils/fileKind'
 import { formatBytes, formatStamp } from '@/utils/formatFile'
@@ -338,6 +344,10 @@ import ConcreteVoid from '@/components/drive/ConcreteVoid.vue'
 
 type Channel = 'mine' | 'public' | 'root' | 'trash'
 type SortKey = 'name' | 'type' | 'size' | 'time'
+type PickerWindow = Window & {
+  showOpenFilePicker?: (options?: object) => Promise<FileSystemFileHandleLike[]>
+  showSaveFilePicker?: (options?: object) => Promise<FileSystemFileHandleLike>
+}
 type DialogState = {
   title: string
   field: boolean
@@ -377,6 +387,7 @@ const sortOptions = computed(() => [
 
 const CAP_GB = 100
 const auth = useAuthStore()
+const transfers = useTransferStore()
 const router = useRouter()
 const fileInput = ref<HTMLInputElement | null>(null)
 const query = ref('')
@@ -420,8 +431,6 @@ const {
   trashItems,
   restoreItem,
   trashLabelOf,
-  uploadPicked,
-  downloadItem,
   moveItem,
   compressItem,
   extractItem,
@@ -724,14 +733,59 @@ watch(
   },
 )
 
-function pickUpload() {
+async function pickUpload() {
+  const picker = (window as PickerWindow).showOpenFilePicker
+  if (picker) {
+    try {
+      const handles = await picker({ multiple: true })
+      for (const handle of handles) {
+        await queueUpload(await handle.getFile(), handle)
+      }
+    } catch {
+      /* user canceled */
+    }
+    return
+  }
   fileInput.value?.click()
 }
 
-function onFileInput(event: Event) {
+async function onFileInput(event: Event) {
   const input = event.target as HTMLInputElement
-  void uploadPicked(input.files?.[0])
+  const file = input.files?.[0]
+  if (file) {
+    await queueUpload(file)
+  }
   input.value = ''
+}
+
+async function queueUpload(file: File, handle?: FileSystemFileHandleLike) {
+  await transfers.enqueueUpload(file, toServerPath(crumbs.value), handle)
+  message.value = t('transfers.queuedNotice')
+}
+
+async function queueDownload(item: FilesVO) {
+  const picker = (window as PickerWindow).showSaveFilePicker
+  let handle: FileSystemFileHandleLike | undefined
+  let saveLocation = t('transfers.defaultDownloads')
+  let saveStrategy: 'file-system-access' | 'browser-download' = 'browser-download'
+  if (picker) {
+    try {
+      handle = await picker({ suggestedName: itemLabel(item) })
+      saveLocation = handle.name
+      saveStrategy = 'file-system-access'
+    } catch {
+      return
+    }
+  }
+  await transfers.enqueueDownload({
+    fileName: itemLabel(item),
+    sourcePath: toServerPath([...crumbs.value, item.fileName]),
+    totalBytes: bytesOfNode(item),
+    saveLocation,
+    saveStrategy,
+    destinationHandle: handle,
+  })
+  message.value = t('transfers.queuedNotice')
 }
 
 function canDropInto(item: FilesVO): boolean {
@@ -902,7 +956,7 @@ async function onBrowserDrop(event: DragEvent) {
   }
   const files = Array.from(event.dataTransfer?.files ?? [])
   for (const file of files) {
-    await uploadPicked(file)
+    await queueUpload(file)
   }
 }
 
@@ -1074,6 +1128,7 @@ function closeMenu() {
 }
 
 onMounted(() => {
+  void transfers.hydrate()
   void load().then(() => {
     if (auth.user) {
       openMine()
@@ -1131,7 +1186,7 @@ onUnmounted(() => {
   gap: 0.35rem;
 }
 
-.arc__nav button,
+.arc__nav :is(button, a),
 .arc__side-links :is(a, button),
 .arc__tools > button,
 .arc__sel button,
@@ -1150,25 +1205,26 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
-.arc__nav button.is-on,
-.arc__nav button.is-live,
-.arc__nav button.is-drop,
+.arc__nav :is(button, a).is-on,
+.arc__nav a.router-link-active,
+.arc__nav :is(button, a).is-live,
+.arc__nav :is(button, a).is-drop,
 .arc__title button.is-drop,
 .arc__tools > button.is-on {
   color: var(--arc-lime);
 }
 
-.arc__nav button.is-live {
+.arc__nav :is(button, a).is-live {
   opacity: 0.85;
 }
 
-.arc__nav button.is-drop,
+.arc__nav :is(button, a).is-drop,
 .arc__title button.is-drop {
   outline: 1px dashed var(--arc-lime);
   outline-offset: 2px;
 }
 
-.arc__nav button.is-off {
+.arc__nav :is(button, a).is-off {
   opacity: 0.45;
 }
 

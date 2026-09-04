@@ -28,7 +28,7 @@ import BrandLogo from '@/components/BrandLogo.vue'
 const isDev = import.meta.env.DEV
 const route = useRoute()
 const showChrome = computed(() => !route.meta.hideChrome)
-const isShell = computed(() => route.name === 'drive')
+const isShell = computed(() => String(route.name ?? '').startsWith('drive'))
 
 watch(
   isShell,
