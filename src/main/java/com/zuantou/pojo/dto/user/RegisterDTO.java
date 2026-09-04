@@ -1,4 +1,4 @@
-package com.zuantou.pojo.dto;
+package com.zuantou.pojo.dto.user;
 
 import lombok.Data;
 

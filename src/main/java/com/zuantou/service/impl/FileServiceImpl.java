@@ -4,14 +4,18 @@ import com.zuantou.common.exception.BusinessException;
 import com.zuantou.common.properties.CommonProperties;
 import com.zuantou.common.properties.ErrorCode;
 import com.zuantou.common.utils.ZipUtil;
+import com.zuantou.mapper.ContinuableUploadMapper;
 import com.zuantou.mapper.DeleteBinFileSourceMapper;
 import com.zuantou.mapper.UserMapper;
+import com.zuantou.pojo.ContinuableUpload;
 import com.zuantou.pojo.DeleteBinFileSource;
 import com.zuantou.pojo.User;
-import com.zuantou.pojo.dto.*;
 import com.zuantou.common.utils.UserContext;
 import com.zuantou.common.properties.MyValFileProperties;
 import com.zuantou.pojo.Result;
+import com.zuantou.pojo.dto.file.*;
+import com.zuantou.pojo.dto.file.continueableDTO.ContinuableUploadDTO;
+import com.zuantou.pojo.dto.file.continueableDTO.GetUploadedSizeDTO;
 import com.zuantou.pojo.vo.FilesVO;
 import com.zuantou.service.FileService;
 import com.zuantou.common.utils.FileUtil;
@@ -21,10 +25,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.OutputStream;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -36,6 +37,7 @@ public class FileServiceImpl implements FileService {
     private final MyValFileProperties fileProperties;
     private final UserMapper userMapper;
     private final DeleteBinFileSourceMapper deleteBinFileSourceMapper;
+    private final ContinuableUploadMapper continuableUploadMapper;
 
     @Override
     public Result<List<FilesVO>> getFiles() {
@@ -159,7 +161,7 @@ public class FileServiceImpl implements FileService {
 
         File newFile = new File(uploadFileDTO.getPath(), fileName);
 
-        if (newFile.exists()){
+        if (newFile.exists()) {
             newFile = insertedFile(newFile, newFile.getParentFile());
             fileName = newFile.getName();
         }
@@ -353,7 +355,7 @@ public class FileServiceImpl implements FileService {
         File oldFile = new File(deleteBinFileSource.getNewPath());
         if (newFile.exists()) {
             File newNamedFile = insertedFile(oldFile, newFile.getParentFile());
-            if (newFile.isFile()){
+            if (newFile.isFile()) {
                 try {
                     if (!newNamedFile.createNewFile()) {
                         return Result.error(ErrorCode.EXCEPTION);
@@ -361,7 +363,7 @@ public class FileServiceImpl implements FileService {
                 } catch (IOException e) {
                     throw new BusinessException(ErrorCode.EXCEPTION);
                 }
-            }else {
+            } else {
                 if (!newNamedFile.mkdir()) {
                     return Result.error(ErrorCode.EXCEPTION);
                 }
@@ -371,7 +373,7 @@ public class FileServiceImpl implements FileService {
             } catch (IOException e) {
                 return Result.error(ErrorCode.EXCEPTION);
             }
-        }else {
+        } else {
             try {
                 Files.move(oldFile.toPath(), newFile.toPath());
             } catch (IOException e) {
@@ -381,7 +383,93 @@ public class FileServiceImpl implements FileService {
         deleteBinFileSourceMapper.deleteById(deleteBinFileSource.getNewPath());
         return Result.success();
     }
-// 分享, 收藏
+
+    @Override
+    public Result<String> initUpload() {
+        String uuid = UUID.randomUUID().toString();
+        continuableUploadMapper.insert(new ContinuableUpload(uuid, UserContext.getUserId(), 0L, null));
+        return Result.success(uuid);
+    }
+
+    @Override
+    public Result<Void> continuableUpload(ContinuableUploadDTO continuableUploadDTO) {
+        Integer errorCode = checkFilePermission(continuableUploadDTO.getTargetPath(), OTHER, CommonProperties.COMMON_PATH_OPERATION);
+        if (errorCode != null) {
+            return Result.error(errorCode);
+        }
+
+        MultipartFile multipartFile = continuableUploadDTO.getMultipartFile();
+
+        if (multipartFile == null || multipartFile.isEmpty()) {
+            return Result.error(ErrorCode.FILE_OPERATION_FAILED);
+        }
+
+        ContinuableUpload continuableUpload = continuableUploadMapper.selectById(continuableUploadDTO.getUploadKey());
+
+        if (continuableUpload == null) {
+            return Result.error(ErrorCode.UPLOAD_KEY_NOT_FOUND);
+        }
+
+        File uploadFilePath;
+
+        switch (continuableUploadDTO.getUploadType()) {
+            case ContinuableUploadDTO.FIRST_UPLOAD_TYPE -> {
+                String fileName = multipartFile.getOriginalFilename();
+
+                if (fileName == null || fileName.isBlank()) {
+                    return Result.error(ErrorCode.FILE_NAME_ILLEGAL);
+                }
+
+                File newFile = new File(continuableUploadDTO.getTargetPath(), fileName);
+
+                if (newFile.exists()) {
+                    newFile = insertedFile(newFile, newFile.getParentFile());
+                }
+                uploadFilePath = newFile;
+                continuableUpload.setUploadFilePath(newFile.getPath());
+                continuableUploadMapper.updateById(continuableUpload);
+            }
+            case ContinuableUploadDTO.NOT_FIRST_UPLOAD_TYPE -> {
+                String path = continuableUpload.getUploadFilePath();
+                if (path == null || path.isEmpty()){
+                    return Result.error(ErrorCode.UPLOAD_KEY_NOT_FOUND);
+                }
+                uploadFilePath = new File(path);
+            }
+            default -> {
+                return Result.error(ErrorCode.ARGS_ILLEGAL);
+            }
+        }
+
+        try (InputStream input = multipartFile.getInputStream();
+             FileOutputStream fos = new FileOutputStream(uploadFilePath,true)) {
+
+            byte[] buffer = new byte[fileProperties.getUploadBufferSize() * 1024 * 1024];
+            int len;
+
+            while ((len = input.read(buffer)) != -1) {
+                fos.write(buffer, 0, len);
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        return Result.success();
+    }
+
+    @Override
+    public Result<Long> getUploadedSize(GetUploadedSizeDTO getUploadedSizeDTO) {
+        ContinuableUpload continuableUpload = continuableUploadMapper.selectById(getUploadedSizeDTO.getUploadKey());
+        if (continuableUpload == null) {
+            return Result.error(ErrorCode.UPLOAD_KEY_NOT_FOUND);
+        }
+        try {
+            return Result.success(Files.size(Path.of(continuableUpload.getUploadFilePath())));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    // 分享, 收藏
 
     private Integer checkFilePermission(String path, int operationType, int fileType) {
         Path target = Paths.get(path).toAbsolutePath().normalize();
@@ -526,9 +614,10 @@ public class FileServiceImpl implements FileService {
     private final int SEARCH_AND_DOWNLOAD = 0;
     private final int OTHER = 1;
 
-    public FileServiceImpl(MyValFileProperties fileProperties, UserMapper userMapper, DeleteBinFileSourceMapper deleteBinFileSourceMapper) {
+    public FileServiceImpl(MyValFileProperties fileProperties, UserMapper userMapper, DeleteBinFileSourceMapper deleteBinFileSourceMapper, ContinuableUploadMapper continuableUploadMapper) {
         this.fileProperties = fileProperties;
         this.userMapper = userMapper;
         this.deleteBinFileSourceMapper = deleteBinFileSourceMapper;
+        this.continuableUploadMapper = continuableUploadMapper;
     }
 }

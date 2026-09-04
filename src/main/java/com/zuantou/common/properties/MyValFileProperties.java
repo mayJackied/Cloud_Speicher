@@ -12,4 +12,5 @@ public class MyValFileProperties {
     private String publicPath;
     private String recycleBinName;
     private Integer retainTime;
+    private Integer uploadBufferSize;
 }

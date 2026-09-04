@@ -1,4 +1,4 @@
-package com.zuantou.pojo.dto;
+package com.zuantou.pojo.dto.file;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;

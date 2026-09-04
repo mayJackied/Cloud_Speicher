@@ -1,9 +1,9 @@
 package com.zuantou.service;
 
 import com.zuantou.pojo.Result;
-import com.zuantou.pojo.dto.CheckUserNameDTO;
-import com.zuantou.pojo.dto.LoginDTO;
-import com.zuantou.pojo.dto.RegisterDTO;
+import com.zuantou.pojo.dto.user.CheckUserNameDTO;
+import com.zuantou.pojo.dto.user.LoginDTO;
+import com.zuantou.pojo.dto.user.RegisterDTO;
 import com.zuantou.pojo.vo.CheckUserNameVO;
 import com.zuantou.pojo.vo.CreatInviteCodeVO;
 import com.zuantou.pojo.vo.LoginVO;

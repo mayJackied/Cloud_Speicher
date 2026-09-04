@@ -1,7 +1,9 @@
 package com.zuantou.service;
 
 import com.zuantou.pojo.Result;
-import com.zuantou.pojo.dto.*;
+import com.zuantou.pojo.dto.file.*;
+import com.zuantou.pojo.dto.file.continueableDTO.ContinuableUploadDTO;
+import com.zuantou.pojo.dto.file.continueableDTO.GetUploadedSizeDTO;
 import com.zuantou.pojo.vo.FilesVO;
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -33,4 +35,10 @@ public interface FileService {
     Result<Void> deleteBinAllFiles(DeleteBinAllFilesDTO deleteBinAllFilesDTO);
 
     Result<Void> restoreFile(DeleteFileDTO deleteFileDTO);
+
+    Result<String> initUpload();
+
+    Result<Void> continuableUpload(ContinuableUploadDTO continuableUploadDTO);
+
+    Result<Long> getUploadedSize(GetUploadedSizeDTO getUploadedSizeDTO);
 }

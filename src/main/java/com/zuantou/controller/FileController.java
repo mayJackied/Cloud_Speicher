@@ -1,7 +1,9 @@
 package com.zuantou.controller;
 
 import com.zuantou.pojo.Result;
-import com.zuantou.pojo.dto.*;
+import com.zuantou.pojo.dto.file.*;
+import com.zuantou.pojo.dto.file.continueableDTO.ContinuableUploadDTO;
+import com.zuantou.pojo.dto.file.continueableDTO.GetUploadedSizeDTO;
 import com.zuantou.pojo.vo.FilesVO;
 import com.zuantou.service.FileService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -81,6 +83,21 @@ public class FileController {
    @PostMapping("/restoreFile")
     public Result<Void> restoreFile(@RequestBody DeleteFileDTO deleteFileDTO){
         return fileService.restoreFile(deleteFileDTO);
+    }
+
+    @GetMapping("/initUpload")
+    public Result<String> initUpload(){
+        return fileService.initUpload();
+    }
+
+    @PostMapping("/continuableUploadFile")
+    public Result<Void> uploadFile(@ModelAttribute ContinuableUploadDTO continuableUploadDTO) {
+        return fileService.continuableUpload(continuableUploadDTO);
+    }
+
+    @GetMapping("/getUploadedSize")
+    public Result<Long> getUploadedSize(GetUploadedSizeDTO getUploadedSizeDTO){
+        return fileService.getUploadedSize(getUploadedSizeDTO);
     }
 
     public FileController(FileService fileService) {

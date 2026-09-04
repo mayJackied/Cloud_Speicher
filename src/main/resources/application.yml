@@ -33,6 +33,8 @@ my:
       recycleBinName: "recycle_bin"
       retainTime: 7 #Days
 
+      uploadBufferSize: 5 #MB
+
     signKey: "reisen"
     expire: 30 #Days
     url: ${host}

@@ -1,15 +1,15 @@
-import com.zuantou.common.jwt.JwtUtils;
-import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
 
-import java.io.File;
+import org.junit.jupiter.api.Test;
+
+
+import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
 public class test {
     @Test
-    public void test2(){
+    public void test2() {
         System.out.println(insertedFile(new File("C:/Users/admin/Desktop/aaa/a/a.txt"), new File("C:/Users/admin/Desktop/aaa")));
     }
 
@@ -54,10 +54,10 @@ public class test {
                 numberList.add(i);
             }
         }
-        numberList.sort((o1,o2)-> o1-o2);
+        numberList.sort((o1, o2) -> o1 - o2);
         int number = 1;
         for (Integer i : numberList) {
-            if (number != i){
+            if (number != i) {
                 break;
             }
             number++;
@@ -91,6 +91,80 @@ public class test {
         }
         newName.append(oldFile.getName()).append("(").append(insertNumber).append(")");
         return newName.toString();
+    }
+
+    @Test
+    public void test4() throws RuntimeException, IOException, InterruptedException {
+        File sourceFile = new File("C:/Users/admin/Desktop/aaa/bbb/Kopfschmerzen.flac");
+        File targetDir = new File("C:/Users/admin/Desktop/aaa");
+        FileInputStream inputStream = new FileInputStream(sourceFile);
+        FileOutputStream outputStream = new FileOutputStream(new File(targetDir, sourceFile.getName()));
+
+        int byteArrayL = 5 * 1024 * 1024;
+
+        int len;
+        byte[] bytes = new byte[byteArrayL];
+
+        long sourceFileL = sourceFile.length();
+        long targetFileL = 0L;
+
+        while ((len = inputStream.read(bytes)) != -1) {
+            outputStream.write(bytes, 0, len);
+            targetFileL = targetFileL + len;
+            System.out.println(String.format("%.0f", (double) targetFileL / sourceFileL * 100) + "%");
+        }
+        System.out.println(targetFileL);
+        inputStream.close();
+        outputStream.close();
+    }
+
+    @Test
+    public void test3() throws IOException, InterruptedException {
+        File sourceFile = new File("C:/Users/admin/Desktop/aaa/bbb/Kopfschmerzen.flac");
+        File targetDir = new File("C:/Users/admin/Desktop/aaa");
+        FileInputStream inputStream = new FileInputStream(sourceFile);
+        FileOutputStream outputStream = new FileOutputStream(new File(targetDir, sourceFile.getName()));
+
+        int byteArrayL = 5 * 1024 * 1024;
+
+        int len;
+        byte[] bytes = new byte[byteArrayL];
+
+        long sourceFileL = sourceFile.length();
+        long targetFileL = 0L;
+
+        int i = 0;
+        while ((len = inputStream.read(bytes)) != -1) {
+            if (i == 7) {
+                inputStream.close();
+                outputStream.close();
+                System.out.println("中断了");
+                break;
+            }
+            outputStream.write(bytes, 0, len);
+            targetFileL = targetFileL + len;
+            System.out.println(String.format("%.0f", (double) targetFileL / sourceFileL * 100) + "%");
+            i++;
+        }
+        File tempFile = new File(targetDir, sourceFile.getName());
+        System.out.println(targetFileL+","+ tempFile.length());
+
+        FileInputStream inputStream2 = new FileInputStream(sourceFile);
+        FileOutputStream outputStream2 = new FileOutputStream(new File(targetDir, sourceFile.getName()),true);
+
+        inputStream2.skip(targetFileL);
+
+        while ((len = inputStream2.read(bytes)) != -1) {
+            outputStream2.write(bytes, 0, len);
+            targetFileL = targetFileL + len;
+            Thread.sleep(100);
+            System.out.println(String.format("%.0f", (double) targetFileL / sourceFileL * 100) + "%");
+        }
+
+        System.out.println(targetFileL);
+
+        inputStream2.close();
+        outputStream2.close();
     }
 
 }
