@@ -87,7 +87,9 @@ describe('useDriveFiles 回收站还原', () => {
     await drive.restoreItem(trashed!)
 
     expect(api.downloadFile).toHaveBeenCalledWith({
-      path: '../files/8/recycle_bin/_trash_meta.json',
+      downloadFilePath: '../files/8/recycle_bin/_trash_meta.json',
+      downloadType: 0,
+      downloadedSize: 0,
     })
     expect(api.moveFile).toHaveBeenCalledWith({
       path: '../files/8/recycle_bin/report.txt',

@@ -30,7 +30,46 @@ export interface RenameFileDTO {
 }
 
 export interface DownloadFileDTO {
-  path: string
+  /** @deprecated 旧整包下载字段；现网改为 ContinuableDownloadDTO.downloadFilePath */
+  path?: string
+}
+
+/** 现网 `POST /file/downloadFile`：首次或从 downloadedSize 续传剩余字节。 */
+export const DownloadType = {
+  FIRST: 0,
+  RESUME: 1,
+} as const
+
+export type DownloadTypeValue = (typeof DownloadType)[keyof typeof DownloadType]
+
+export interface ContinuableDownloadDTO {
+  downloadFilePath: string
+  downloadedSize?: number | null
+  downloadType: DownloadTypeValue
+}
+
+export interface ContinuableUploadDTO {
+  uploadKey: string
+  targetPath: string
+  file: File | Blob
+  fileName?: string
+  uploadType: 0 | 1
+}
+
+export interface CloseUploadDTO {
+  uploadKey: string
+}
+
+export interface GetUploadedSizeDTO {
+  uploadKey: string
+}
+
+export interface StarFileDTO {
+  starFilePath: string
+}
+
+export interface StarredFileVO {
+  starFilePath: string
 }
 
 /** JSON：path + 	argetDir（驼峰；空字符串 = 源文件父目录） */

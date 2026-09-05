@@ -1,76 +1,81 @@
+import {
+  closeUpload,
+  continuableUploadFile,
+  getUploadedSize,
+  initUpload,
+} from './files'
 import { api } from './client'
-import type { Result } from '@/types/result'
-import type {
-  CompleteUploadDTO,
-  CompleteUploadVO,
-  DownloadMetadataVO,
-  InitDownloadDTO,
-  InitUploadDTO,
-  TransferChunkVO,
-  TransferSessionVO,
-} from '@/types/transfer'
+import { isResultShape } from '@/dev/contract'
+import { ErrorCode } from '@/types/errorCode'
+import { DownloadType } from '@/types/file'
+import type { AxiosProgressEvent } from 'axios'
 
-const BASE = '/file/transfer'
+/** 与后端 `uploadBufferSize`（5MB）对齐的分块大小。 */
+export const UPLOAD_CHUNK_SIZE = 5 * 1024 * 1024
 
-export function initUploadTransfer(dto: InitUploadDTO) {
-  return api.post<Result<TransferSessionVO>>(`${BASE}/upload/init`, dto)
+export async function allocateUploadKey() {
+  const init = await initUpload()
+  if (!isResultShape(init.data) || init.data.code !== ErrorCode.OK || !init.data.data) {
+    return { ok: false as const, result: init.data }
+  }
+  return { ok: true as const, uploadKey: String(init.data.data) }
 }
 
-export function probeUploadTransfer(transferId: string) {
-  return api.get<Result<TransferSessionVO>>(`${BASE}/upload/${transferId}`)
+export async function probeUploadedSize(uploadKey: string) {
+  const probed = await getUploadedSize({ uploadKey })
+  if (!isResultShape(probed.data) || probed.data.code !== ErrorCode.OK) {
+    return { ok: false as const, result: probed.data }
+  }
+  return { ok: true as const, nextOffset: Number(probed.data.data ?? 0) }
 }
 
-export function uploadTransferChunk(
-  transferId: string,
-  offset: number,
-  chunk: Blob,
-  totalBytes: number,
-  chunkHash?: string,
-) {
-  const end = offset + chunk.size - 1
-  return api.put<Result<TransferChunkVO>>(`${BASE}/upload/${transferId}`, chunk, {
-    headers: {
-      'Content-Type': 'application/octet-stream',
-      'Content-Range': `bytes ${offset}-${end}/${totalBytes}`,
-      ...(chunkHash ? { 'X-Chunk-Hash': chunkHash } : {}),
-    },
-    timeout: 0,
+export async function pushUploadChunk(options: {
+  uploadKey: string
+  targetPath: string
+  file: File
+  offset: number
+  uploadType: 0 | 1
+  chunkSize?: number
+}) {
+  const chunkSize = options.chunkSize ?? UPLOAD_CHUNK_SIZE
+  const end = Math.min(options.file.size, options.offset + chunkSize)
+  const chunk = options.file.slice(options.offset, end)
+  const uploaded = await continuableUploadFile({
+    uploadKey: options.uploadKey,
+    targetPath: options.targetPath,
+    file: chunk,
+    fileName: options.file.name,
+    uploadType: options.uploadType,
   })
+  if (!isResultShape(uploaded.data) || uploaded.data.code !== ErrorCode.OK) {
+    return { ok: false as const, result: uploaded.data, nextOffset: options.offset }
+  }
+  return { ok: true as const, nextOffset: end }
 }
 
-export function completeUploadTransfer(transferId: string, dto: CompleteUploadDTO) {
-  return api.post<Result<CompleteUploadVO>>(`${BASE}/upload/${transferId}/complete`, dto)
+export function finishUpload(uploadKey: string) {
+  return closeUpload({ uploadKey })
 }
 
-export function cancelUploadTransfer(transferId: string) {
-  return api.delete<Result<null>>(`${BASE}/upload/${transferId}`)
-}
-
-export function initDownloadTransfer(dto: InitDownloadDTO) {
-  return api.post<Result<DownloadMetadataVO>>(`${BASE}/download/init`, dto)
-}
-
-export function downloadTransferRange(
-  path: string,
-  start: number,
-  end: number,
-  etag: string,
-  transferId?: string,
-) {
-  return api.post<Blob>(
-    `${BASE}/download/range`,
-    { path, transferId },
+export function downloadContinuableWithProgress(options: {
+  path: string
+  downloadedSize?: number
+  onProgress?: (event: AxiosProgressEvent) => void
+  signal?: AbortSignal
+}) {
+  const downloadedSize = options.downloadedSize ?? 0
+  return api.post(
+    '/file/downloadFile',
+    {
+      downloadFilePath: options.path,
+      downloadedSize,
+      downloadType: downloadedSize > 0 ? DownloadType.RESUME : DownloadType.FIRST,
+    },
     {
       responseType: 'blob',
-      headers: {
-        Range: `bytes=${start}-${end}`,
-        'If-Range': etag,
-      },
       timeout: 0,
+      signal: options.signal,
+      onDownloadProgress: options.onProgress,
     },
   )
-}
-
-export function cancelDownloadTransfer(transferId: string) {
-  return api.delete<Result<null>>(`${BASE}/download/${transferId}`)
 }

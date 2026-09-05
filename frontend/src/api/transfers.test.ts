@@ -1,71 +1,60 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from './client'
-import {
-  completeUploadTransfer,
-  downloadTransferRange,
-  initUploadTransfer,
-  uploadTransferChunk,
-} from './transfers'
+import { downloadContinuableWithProgress, UPLOAD_CHUNK_SIZE } from './transfers'
+import { closeUpload, downloadFile, getStarredFiles, initUpload } from './files'
 
 afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('断点传输适配层', () => {
-  it('初始化请求带客户端幂等 ID 和文件元数据', () => {
-    const post = vi.spyOn(api, 'post').mockResolvedValue({} as never)
-    const dto = {
-      targetDir: '../files/7',
-      fileName: 'large.bin',
-      totalSize: 100,
-      clientUploadId: 'client-1',
-    }
-
-    void initUploadTransfer(dto)
-
-    expect(post).toHaveBeenCalledWith('/file/transfer/upload/init', dto)
+describe('现网断点传输与星标适配层', () => {
+  beforeEach(() => {
+    vi.stubGlobal('window', {
+      setTimeout,
+      clearTimeout,
+    })
   })
 
-  it('分块请求带权威 offset 对应的 Content-Range', () => {
-    const put = vi.spyOn(api, 'put').mockResolvedValue({} as never)
-    const chunk = new Blob(['abcd'])
+  it('initUpload 走 GET /file/initUpload', () => {
+    const get = vi.spyOn(api, 'get').mockResolvedValue({} as never)
+    void initUpload()
+    expect(get).toHaveBeenCalledWith('/file/initUpload')
+  })
 
-    void uploadTransferChunk('server-1', 8, chunk, 20, 'hash-1')
+  it('分块大小与后端 buffer 对齐为 5MB', () => {
+    expect(UPLOAD_CHUNK_SIZE).toBe(5 * 1024 * 1024)
+  })
 
-    expect(put).toHaveBeenCalledWith(
-      '/file/transfer/upload/server-1',
-      chunk,
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          'Content-Range': 'bytes 8-11/20',
-          'X-Chunk-Hash': 'hash-1',
-        }),
-      }),
+  it('下载使用 ContinuableDownloadDTO', () => {
+    const post = vi.spyOn(api, 'post').mockResolvedValue({} as never)
+    void downloadFile({
+      downloadFilePath: '../files/7/a.bin',
+      downloadedSize: 10,
+      downloadType: 1,
+    })
+    expect(post).toHaveBeenCalledWith(
+      '/file/downloadFile',
+      {
+        downloadFilePath: '../files/7/a.bin',
+        downloadedSize: 10,
+        downloadType: 1,
+      },
+      expect.objectContaining({ responseType: 'blob' }),
     )
   })
 
-  it('完成与下载 Range 请求使用隔离端点', () => {
+  it('进度下载与关闭上传、收藏列表端点正确', () => {
     const post = vi.spyOn(api, 'post').mockResolvedValue({} as never)
-
-    void completeUploadTransfer('server-1', { contentHash: 'full-hash' })
-    void downloadTransferRange('../files/7/a.bin', 10, 19, '"etag"', 'down-1')
-
+    void downloadContinuableWithProgress({ path: '../files/7/a.bin', downloadedSize: 0 })
+    void closeUpload({ uploadKey: 'key-1' })
+    void getStarredFiles()
     expect(post).toHaveBeenNthCalledWith(
       1,
-      '/file/transfer/upload/server-1/complete',
-      { contentHash: 'full-hash' },
+      '/file/downloadFile',
+      expect.objectContaining({ downloadFilePath: '../files/7/a.bin', downloadType: 0 }),
+      expect.objectContaining({ responseType: 'blob' }),
     )
-    expect(post).toHaveBeenNthCalledWith(
-      2,
-      '/file/transfer/download/range',
-      { path: '../files/7/a.bin', transferId: 'down-1' },
-      expect.objectContaining({
-        responseType: 'blob',
-        headers: {
-          Range: 'bytes=10-19',
-          'If-Range': '"etag"',
-        },
-      }),
-    )
+    expect(post).toHaveBeenNthCalledWith(2, '/file/closeUpload', { uploadKey: 'key-1' })
+    expect(post).toHaveBeenNthCalledWith(3, '/file/getStarredFiles')
   })
 })

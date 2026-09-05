@@ -119,6 +119,8 @@ const publicRoot: MockNode = mockNode('public', false, [
 ])
 const roomRoots = new Map<string, MockNode>()
 const mockFileBytes = new Map<string, Uint8Array>()
+const mockUploads = new Map<string, { path: string; size: number }>()
+const mockStars = new Map<number, Set<string>>()
 mockFileBytes.set(`${FILE_PREFIX}/public/photo/FLORA_SPECTRA.svg`, sampleSvgBytes)
 
 function userIdFromToken(token: string): number {
@@ -222,6 +224,84 @@ function mockApiPlugin(): Plugin {
             return
           }
 
+          if (req.method === 'GET' && url.startsWith('/api/file/initUpload')) {
+            const key = `mock-up-${Date.now().toString(36)}`
+            mockUploads.set(key, { path: '', size: 0 })
+            sendJson(res, ok(key))
+            return
+          }
+
+          if (req.method === 'GET' && url.startsWith('/api/file/getUploadedSize')) {
+            const key = queryParam(req.url ?? '', 'uploadKey')
+            const session = mockUploads.get(key)
+            if (!session) {
+              sendJson(res, fail(20008))
+              return
+            }
+            sendJson(res, ok(session.size))
+            return
+          }
+
+          if (req.method === 'POST' && url === '/api/file/continuableUploadFile') {
+            void readRaw(req).then((bytes) => {
+              const body = new TextDecoder('latin1').decode(bytes)
+              const uploadKey = multipartField(body, 'uploadKey')
+              const targetPath = multipartField(body, 'targetPath')
+              const uploadType = Number(multipartField(body, 'uploadType') || '0')
+              const uploadedName =
+                decodeFileName(multipartField(body, 'fileName')) || multipartFilename(body)
+              const session = mockUploads.get(uploadKey)
+              if (!session) {
+                sendJson(res, fail(20008))
+                return
+              }
+              const denied = fileWritable(targetPath, token)
+              if (denied) {
+                sendJson(res, fail(denied))
+                return
+              }
+              const fileBytes = fileBytesFromStored(bytes)
+              if (uploadType === 0 || !session.path) {
+                const segments = parseFilePath(targetPath)
+                if (!segments || segments.length === 0) {
+                  sendJson(res, fail(20004))
+                  return
+                }
+                const parent = findMockNode(userId, segments)
+                if (!parent || parent.is_file) {
+                  sendJson(res, fail(20004))
+                  return
+                }
+                const kids = parent.filesVOS ?? []
+                const storedName = availableCopyName(
+                  kids.map((node) => node.fileName),
+                  uploadedName || 'upload.bin',
+                )
+                const stored = mockNode(storedName, true)
+                stored.length = fileBytes.length
+                parent.filesVOS = [...kids, stored]
+                const fullPath = `${FILE_PREFIX}/${[...segments, storedName].join('/')}`
+                mockFileBytes.set(fullPath, fileBytes)
+                session.path = fullPath
+                session.size = fileBytes.length
+              } else {
+                const prev = mockFileBytes.get(session.path) ?? new Uint8Array()
+                const merged = new Uint8Array(prev.length + fileBytes.length)
+                merged.set(prev, 0)
+                merged.set(fileBytes, prev.length)
+                mockFileBytes.set(session.path, merged)
+                session.size = merged.length
+                const segs = parseFilePath(session.path)
+                const node = segs ? findMockNode(userId, segs) : null
+                if (node?.is_file) {
+                  node.length = merged.length
+                }
+              }
+              sendJson(res, ok(null))
+            })
+            return
+          }
+
           if (req.method !== 'POST') {
             next()
             return
@@ -278,9 +358,56 @@ function mockApiPlugin(): Plugin {
           void readBody(req).then((raw) => {
             let parsed: Record<string, unknown> = {}
             try {
-              parsed = JSON.parse(raw) as Record<string, unknown>
+              parsed = JSON.parse(raw || '{}') as Record<string, unknown>
             } catch {
               sendJson(res, fail(99999), 400)
+              return
+            }
+
+            if (url === '/api/file/closeUpload') {
+              const key = String(parsed.uploadKey ?? '')
+              if (!mockUploads.has(key)) {
+                sendJson(res, fail(20008))
+                return
+              }
+              mockUploads.delete(key)
+              sendJson(res, ok(null))
+              return
+            }
+
+            if (url === '/api/file/addStarFile') {
+              const starPath = String(parsed.starFilePath ?? '')
+              const denied = fileReadable(starPath, token)
+              if (denied) {
+                sendJson(res, fail(denied))
+                return
+              }
+              const set = mockStars.get(userId) ?? new Set<string>()
+              if (set.has(starPath)) {
+                sendJson(res, fail(20009))
+                return
+              }
+              set.add(starPath)
+              mockStars.set(userId, set)
+              sendJson(res, ok(null))
+              return
+            }
+
+            if (url === '/api/file/deleteStarredFile') {
+              const starPath = String(parsed.starFilePath ?? '')
+              const set = mockStars.get(userId) ?? new Set<string>()
+              set.delete(starPath)
+              mockStars.set(userId, set)
+              sendJson(res, ok(null))
+              return
+            }
+
+            if (url === '/api/file/getStarredFiles') {
+              const set = mockStars.get(userId) ?? new Set<string>()
+              sendJson(
+                res,
+                ok([...set].map((starFilePath) => ({ starFilePath }))),
+              )
               return
             }
 
@@ -391,7 +518,7 @@ function mockApiPlugin(): Plugin {
               return
             }
 
-            const path = String(parsed.path ?? '')
+            const path = String(parsed.path ?? parsed.downloadFilePath ?? '')
             const segments = parseFilePath(path)
             if (!segments || segments.length === 0) {
               sendJson(res, fail(20001))
@@ -574,7 +701,11 @@ function mockApiPlugin(): Plugin {
                 return
               }
               const stored = mockFileBytes.get(path) ?? new TextEncoder().encode('mock-file\n')
-              const bytes = fileBytesFromStored(stored)
+              const full = fileBytesFromStored(stored)
+              const downloadType = Number(parsed.downloadType ?? 0)
+              const downloadedSize = Number(parsed.downloadedSize ?? 0)
+              const bytes =
+                downloadType === 1 && downloadedSize > 0 ? full.subarray(downloadedSize) : full
               const type = mimeFromName(node.fileName)
               res.statusCode = 200
               res.setHeader('Content-Type', type)

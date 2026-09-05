@@ -2,10 +2,13 @@ import { computed, ref } from 'vue'
 import { isAxiosError } from 'axios'
 import {
   addFile,
+  addStarFile,
   deleteFile,
   deleteFiles,
+  deleteStarredFile,
   downloadFile,
   getFiles,
+  getStarredFiles,
   moveFile,
   renameFile,
   unzipFile,
@@ -372,7 +375,9 @@ export function useDriveFiles() {
     let remote: TrashMeta = {}
     try {
       const { data, headers } = await downloadFile({
-        path: toServerPath([String(userId), binName, TRASH_META_NAME]),
+        downloadFilePath: toServerPath([String(userId), binName, TRASH_META_NAME]),
+        downloadType: 0,
+        downloadedSize: 0,
       })
       if (data instanceof Blob && !String(headers['content-type'] ?? '').includes('json')) {
         const bytes = fileBytesFromStored(new Uint8Array(await data.arrayBuffer()))
@@ -860,7 +865,11 @@ export function useDriveFiles() {
       message.value = messageForCode(ErrorCode.NO_PERMISSION)
       return null
     }
-    const { data, headers } = await downloadFile({ path: itemPath(node.fileName) })
+    const { data, headers } = await downloadFile({
+      downloadFilePath: itemPath(node.fileName),
+      downloadType: 0,
+      downloadedSize: 0,
+    })
     if (!(data instanceof Blob)) {
       return null
     }
@@ -905,6 +914,74 @@ export function useDriveFiles() {
     message.value = '已加入传输列表'
   }
 
+  function fileNameFromServerPath(path: string): string {
+    const parts = path.replace(/\\/g, '/').split('/').filter(Boolean)
+    return parts[parts.length - 1] || path
+  }
+
+  function findNodeByServerPath(path: string): FilesVO | null {
+    const normalized = path.replace(/\\/g, '/')
+    const prefix = `${FILE_STORAGE_PREFIX}/`
+    if (!normalized.startsWith(prefix) && normalized !== FILE_STORAGE_PREFIX) {
+      return null
+    }
+    const segs =
+      normalized === FILE_STORAGE_PREFIX
+        ? []
+        : normalized.slice(prefix.length).split('/').filter(Boolean)
+    return findNodeAt(segs)
+  }
+
+  async function loadStarredPaths(): Promise<string[]> {
+    try {
+      const { data } = await getStarredFiles()
+      if (!isResultShape(data) || data.code !== ErrorCode.OK || !Array.isArray(data.data)) {
+        message.value = isResultShape(data) ? messageForCode(data.code) : '无法加载收藏'
+        return []
+      }
+      return data.data
+        .map((row) => String((row as { starFilePath?: string }).starFilePath ?? '').trim())
+        .filter(Boolean)
+    } catch {
+      message.value = '无法连接服务器'
+      return []
+    }
+  }
+
+  function starredItemsFromPaths(paths: string[]): FilesVO[] {
+    return paths.map((path) => {
+      const found = findNodeByServerPath(path)
+      if (found) {
+        return found
+      }
+      return {
+        fileName: fileNameFromServerPath(path),
+        isFile: true,
+        length: 0,
+        lastModified: 0,
+        filesVOS: null,
+      }
+    })
+  }
+
+  async function starItem(node: FilesVO) {
+    if (atRoot.value) {
+      return
+    }
+    const path = itemPath(node.fileName)
+    await mutate(async () => {
+      const { data } = await addStarFile({ starFilePath: path })
+      return data
+    })
+  }
+
+  async function unstarPath(path: string) {
+    await mutate(async () => {
+      const { data } = await deleteStarredFile({ starFilePath: path })
+      return data
+    })
+  }
+
   return {
     roots,
     crumbs,
@@ -942,5 +1019,10 @@ export function useDriveFiles() {
     itemPath,
     currentDirPath,
     ensureRecycleBin,
+    loadStarredPaths,
+    starredItemsFromPaths,
+    starItem,
+    unstarPath,
+    findNodeByServerPath,
   }
 }

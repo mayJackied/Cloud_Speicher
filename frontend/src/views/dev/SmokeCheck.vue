@@ -141,7 +141,9 @@ async function runSmoke() {
       lines.push(uploadOk && listed ? '通过 — 上传后列表出现文件' : '失败 — 上传')
 
       const { data: blob, headers } = await downloadFile({
-        path: toServerPath([String(loginVo.userId), fileName]),
+        downloadFilePath: toServerPath([String(loginVo.userId), fileName]),
+        downloadType: 0,
+        downloadedSize: 0,
       })
       const downOk =
         blob instanceof Blob && !String(headers['content-type'] ?? '').includes('json') && blob.size > 0

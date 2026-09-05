@@ -14,8 +14,20 @@ import {
   loadTransferRecords,
   saveTransferRecord,
 } from '@/utils/transferDb'
+import {
+  UPLOAD_CHUNK_SIZE,
+  allocateUploadKey,
+  downloadContinuableWithProgress,
+  finishUpload,
+  probeUploadedSize,
+  pushUploadChunk,
+} from '@/api/transfers'
+import { closeUpload } from '@/api/files'
+import { isResultShape } from '@/dev/contract'
+import { ErrorCode } from '@/types/errorCode'
+import { isAxiosError } from 'axios'
 
-const DEFAULT_CHUNK_SIZE = 4 * 1024 * 1024
+const DEFAULT_CHUNK_SIZE = UPLOAD_CHUNK_SIZE
 const MOCK_TICK_MS = 120
 
 const sourceFiles = new Map<string, File>()
@@ -40,7 +52,7 @@ export function restoredTransferStatus(
   task: TransferTask,
   hasSourceHandle: boolean,
   hasDestinationHandle: boolean,
-  online: boolean,
+  _online = false,
 ): TransferStatus {
   if (isTerminal(task.status) || task.status === 'failed') {
     return task.status
@@ -48,15 +60,17 @@ export function restoredTransferStatus(
   if (task.status === 'paused') {
     return 'paused'
   }
-  if (online) {
-    return 'waiting_backend'
-  }
   if (task.direction === 'upload' && !hasSourceHandle) {
     return 'needs_source'
   }
-  if (task.direction === 'download' && !hasDestinationHandle) {
+  if (
+    task.direction === 'download' &&
+    task.saveStrategy === 'file-system-access' &&
+    !hasDestinationHandle
+  ) {
     return 'needs_destination'
   }
+  // 刷新后不自动开跑，等用户点继续。
   return 'paused'
 }
 
@@ -253,15 +267,265 @@ export const useTransferStore = defineStore('transfers', () => {
 
   function begin(id: string) {
     if (readApiMode() === 'online') {
-      patchTask(id, {
-        status: 'waiting_backend',
-        speedBps: 0,
-        remainingSeconds: null,
-        errorMessage: undefined,
-      })
+      void startOnline(id)
       return
     }
     startOffline(id)
+  }
+
+  function failTask(id: string, code?: number, message?: string) {
+    patchTask(id, {
+      status: 'failed',
+      speedBps: 0,
+      remainingSeconds: null,
+      errorCode: code,
+      errorMessage: message || (code != null ? String(code) : 'TRANSFER_FAILED'),
+    })
+  }
+
+  async function startOnline(id: string) {
+    const task = taskById(id)
+    if (!task || isTerminal(task.status)) {
+      return
+    }
+    if (task.direction === 'upload') {
+      await runOnlineUpload(id)
+      return
+    }
+    await runOnlineDownload(id)
+  }
+
+  async function runOnlineUpload(id: string) {
+    const file = sourceFiles.get(id)
+    if (!file) {
+      patchTask(id, { status: 'needs_source', speedBps: 0, remainingSeconds: null })
+      return
+    }
+    stopRuntime(id)
+    const controller = new AbortController()
+    controllers.set(id, controller)
+    let task = patchTask(id, {
+      status: 'running',
+      errorCode: undefined,
+      errorMessage: undefined,
+      chunkSize: DEFAULT_CHUNK_SIZE,
+    })
+    if (!task) {
+      return
+    }
+
+    try {
+      let uploadKey = task.serverTransferId
+      let offset = task.nextOffset
+      let nextType: 0 | 1 = 0
+
+      if (!uploadKey) {
+        const allocated = await allocateUploadKey()
+        if (!allocated.ok) {
+          const code = isResultShape(allocated.result) ? allocated.result.code : ErrorCode.EXCEPTION
+          failTask(id, code)
+          return
+        }
+        uploadKey = allocated.uploadKey
+        offset = 0
+        nextType = 0
+        task = patchTask(id, { serverTransferId: uploadKey, nextOffset: 0, transferredBytes: 0 }) ?? task
+      } else {
+        const probed = await probeUploadedSize(uploadKey)
+        if (probed.ok) {
+          offset = probed.nextOffset
+          nextType = offset > 0 ? 1 : 0
+          patchTask(id, { nextOffset: offset, transferredBytes: offset })
+        } else {
+          nextType = 0
+          offset = 0
+        }
+      }
+
+      if (file.size === 0) {
+        const empty = await pushUploadChunk({
+          uploadKey,
+          targetPath: task.targetPath,
+          file,
+          offset: 0,
+          uploadType: 0,
+        })
+        if (!empty.ok) {
+          const code = isResultShape(empty.result) ? empty.result.code : ErrorCode.FILE_OPERATION_FAILED
+          failTask(id, code)
+          return
+        }
+        await finishUpload(uploadKey)
+        patchTask(id, {
+          status: 'completed',
+          transferredBytes: 0,
+          nextOffset: 0,
+          speedBps: 0,
+          remainingSeconds: 0,
+        })
+        return
+      }
+
+      while (offset < file.size) {
+        if (controller.signal.aborted) {
+          return
+        }
+        const startedAt = Date.now()
+        const previous = offset
+        const pushed = await pushUploadChunk({
+          uploadKey,
+          targetPath: task.targetPath,
+          file,
+          offset,
+          uploadType: nextType,
+          chunkSize: task.chunkSize,
+        })
+        if (!pushed.ok) {
+          const code = isResultShape(pushed.result) ? pushed.result.code : ErrorCode.FILE_OPERATION_FAILED
+          failTask(id, code)
+          return
+        }
+        offset = pushed.nextOffset
+        nextType = 1
+        const elapsed = Math.max((Date.now() - startedAt) / 1000, 0.001)
+        const speedBps = Math.round((offset - previous) / elapsed)
+        const left = Math.max(0, file.size - offset)
+        patchTask(id, {
+          transferredBytes: offset,
+          nextOffset: offset,
+          speedBps,
+          remainingSeconds: speedBps > 0 ? Math.ceil(left / speedBps) : null,
+        })
+      }
+
+      if (controller.signal.aborted) {
+        return
+      }
+      await finishUpload(uploadKey)
+      patchTask(id, {
+        status: 'completed',
+        transferredBytes: file.size,
+        nextOffset: file.size,
+        speedBps: 0,
+        remainingSeconds: 0,
+      })
+      sourceFiles.delete(id)
+    } catch (error) {
+      if (controller.signal.aborted) {
+        return
+      }
+      const code =
+        isAxiosError(error) && error.response && isResultShape(error.response.data)
+          ? error.response.data.code
+          : ErrorCode.EXCEPTION
+      failTask(id, code, isAxiosError(error) ? error.message : undefined)
+    } finally {
+      controllers.delete(id)
+    }
+  }
+
+  async function runOnlineDownload(id: string) {
+    const task = taskById(id)
+    if (!task) {
+      return
+    }
+    if (task.saveStrategy === 'file-system-access' && !destinationHandles.get(id)) {
+      patchTask(id, { status: 'needs_destination', speedBps: 0, remainingSeconds: null })
+      return
+    }
+    stopRuntime(id)
+    const controller = new AbortController()
+    controllers.set(id, controller)
+    patchTask(id, {
+      status: 'running',
+      errorCode: undefined,
+      errorMessage: undefined,
+      transferredBytes: 0,
+      nextOffset: 0,
+    })
+
+    try {
+      const startedAt = Date.now()
+      let lastLoaded = 0
+      const response = await downloadContinuableWithProgress({
+        path: task.sourcePath,
+        downloadedSize: 0,
+        signal: controller.signal,
+        onProgress: (event) => {
+          const loaded = event.loaded
+          const now = Date.now()
+          const elapsed = Math.max((now - startedAt) / 1000, 0.001)
+          const speedBps = Math.round(loaded / elapsed)
+          const total = task.totalBytes > 0 ? task.totalBytes : event.total || loaded
+          const left = Math.max(0, total - loaded)
+          lastLoaded = loaded
+          patchTask(id, {
+            transferredBytes: loaded,
+            nextOffset: loaded,
+            totalBytes: task.totalBytes > 0 ? task.totalBytes : total,
+            speedBps,
+            remainingSeconds: speedBps > 0 ? Math.ceil(left / speedBps) : null,
+          })
+        },
+      })
+
+      if (controller.signal.aborted) {
+        return
+      }
+
+      const data = response.data
+      if (!(data instanceof Blob)) {
+        failTask(id, ErrorCode.FILE_OPERATION_FAILED)
+        return
+      }
+      const type = String(response.headers?.['content-type'] ?? '')
+      if (type.includes('json')) {
+        try {
+          const parsed: unknown = JSON.parse(await data.text())
+          if (isResultShape(parsed)) {
+            failTask(id, parsed.code)
+            return
+          }
+        } catch {
+          /* fall through */
+        }
+        failTask(id, ErrorCode.FILE_OPERATION_FAILED)
+        return
+      }
+
+      const handle = destinationHandles.get(id)
+      if (handle?.createWritable) {
+        const writable = await handle.createWritable()
+        await writable.write(data)
+        await writable.close()
+      } else {
+        const url = URL.createObjectURL(data)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = task.fileName
+        link.click()
+        URL.revokeObjectURL(url)
+      }
+
+      patchTask(id, {
+        status: 'completed',
+        transferredBytes: Math.max(lastLoaded, data.size, task.totalBytes),
+        nextOffset: Math.max(lastLoaded, data.size, task.totalBytes),
+        speedBps: 0,
+        remainingSeconds: 0,
+      })
+    } catch (error) {
+      if (controller.signal.aborted) {
+        return
+      }
+      const code =
+        isAxiosError(error) && error.response && isResultShape(error.response.data)
+          ? error.response.data.code
+          : ErrorCode.EXCEPTION
+      failTask(id, code, isAxiosError(error) ? error.message : undefined)
+    } finally {
+      controllers.delete(id)
+    }
   }
 
   async function enqueueUpload(
@@ -377,6 +641,10 @@ export const useTransferStore = defineStore('transfers', () => {
       return
     }
     stopRuntime(id)
+    const uploadKey = task.serverTransferId
+    if (task.direction === 'upload' && uploadKey && readApiMode() === 'online') {
+      void closeUpload({ uploadKey }).catch(() => undefined)
+    }
     patchTask(id, {
       status: 'canceled',
       speedBps: 0,

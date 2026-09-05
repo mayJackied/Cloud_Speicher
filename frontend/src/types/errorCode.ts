@@ -26,6 +26,10 @@ export const ErrorCode = {
   FILE_NOT_FOUND: 20004,
   FILE_ILLEGAL: 20005,
   FILE_DUPLICATE: 20006,
+  BIN_FILE_NOT_ALLOWED: 20007,
+  UPLOAD_KEY_NOT_FOUND: 20008,
+  FILE_STARRED: 20009,
+  ARGS_ILLEGAL: 30001,
 } as const
 
 export type ErrorCodeValue = (typeof ErrorCode)[keyof typeof ErrorCode]

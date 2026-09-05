@@ -136,14 +136,42 @@ DTO: `{ path, new_name }`
 `new_name` 不能空、不能 `.` / `..`、不能含 `/` 或 `\`  
 VO: `Void`
 
-*upload_file*　POST `/api/file/uploadFile`  
-**multipart**（`@ModelAttribute`，不是 JSON）：`path` + `file`  
-VO: `Result<Void>`
+*upload_file*（兼容封装）  
+旧整包 `POST /api/file/uploadFile` **已移除**。前端 `uploadFile()` 现封装为：`initUpload` → 一次 `continuableUploadFile` → `closeUpload`。
+
+*init_upload*　GET `/api/file/initUpload`  
+VO: `Result<String>`（uploadKey / UUID）
+
+*continuable_upload_file*　POST `/api/file/continuableUploadFile`  
+**multipart**（`@ModelAttribute`）：`uploadKey` + `targetPath`（目标文件夹）+ `multipartFile` + `uploadType`（0 首次 / 1 续传）  
+VO: `Result<Void>`  
+首次写入会在目标目录创建文件（撞名则自动编号）；续传向已登记路径追加字节。
+
+*get_uploaded_size*　GET `/api/file/getUploadedSize?uploadKey=`  
+VO: `Result<Long>`（已落盘字节，权威 offset）
+
+*close_upload*　POST `/api/file/closeUpload`  
+DTO: `{ uploadKey }`  
+VO: `Result<Void>`（删除上传会话行）
 
 *download_file*　POST `/api/file/downloadFile`  
-DTO: `{ path }` JSON  
+DTO: `ContinuableDownloadDTO` `{ downloadFilePath, downloadedSize?, downloadType }`  
+`downloadType`：0 首次全量；1 从 `downloadedSize` 跳过后续只传剩余。  
 成功：二进制流（`Content-Disposition: attachment`），**不是 Result**  
-失败：可能走异常处理器变成 `Result` 错误码
+失败：可能走异常处理器变成 `Result` 错误码（含 `20007` 回收站禁止）
+
+*add_star_file*　POST `/api/file/addStarFile`  
+DTO: `{ starFilePath }`  
+VO: `Void`；已收藏 → `20009`
+
+*delete_starred_file*　POST `/api/file/deleteStarredFile`  
+DTO: `{ starFilePath }`  
+VO: `Void`
+
+*get_starred_files*　POST `/api/file/getStarredFiles`  
+DTO: 无  
+VO: `List<StarredFileVO>`（`{ starFilePath }`）  
+前端侧栏「收藏」拉此列表展示。
 
 *zip*　POST `/api/file/zip`  
 DTO: `ZipFileDTO` `{ path, targetDir }`（驼峰；`targetDir` 必须是文件夹，空字符串 = 源文件父目录）  
@@ -175,20 +203,15 @@ DTO: `{ path }`（回收站内项；后端用落盘路径查还原元数据）
 VO: `Void`  
 从回收站还原。前端当前仍有一套本机软删/还原逻辑，与后端回收站 API 可并存，联调时以现网为准。
 
-### 断点传输（拟定契约，后端尚未实现）
+### 断点传输（现网已实现，对齐 backend `0d04466`）
 
-前端只依赖 `frontend/src/api/transfers.ts` 适配层；后端最终命名若变化，只改该文件。
+前端适配层：`frontend/src/api/files.ts` + `frontend/src/api/transfers.ts`；传输列表在线模式直接调这些接口，不再使用拟定的 `/file/transfer/...`。
 
-- `POST /api/file/transfer/upload/init`：`{ targetDir, fileName, totalSize, contentType?, contentHash?, chunkSize?, clientUploadId, fileHandle? }` → `TransferSessionVO`
-- `GET /api/file/transfer/upload/{transferId}`：返回服务端权威 `nextOffset`、`chunkSize`、状态和过期时间
-- `PUT /api/file/transfer/upload/{transferId}`：raw bytes；请求头 `Content-Range: bytes start-end/total`，可带 `X-Chunk-Hash`
-- `POST /api/file/transfer/upload/{transferId}/complete`：校验总长度/哈希后原子落盘
-- `DELETE /api/file/transfer/upload/{transferId}`：取消并清理临时文件
-- `POST /api/file/transfer/download/init`：`{ path, clientDownloadId }` → size、ETag、chunkSize
-- `POST /api/file/transfer/download/range`：body `{ path, transferId? }`，请求头 `Range` + `If-Range`，成功应为 `206`
-- `DELETE /api/file/transfer/download/{transferId}`：取消可选下载会话
+- 上传：`initUpload` → 循环 `continuableUploadFile`（分块约 5MB）→ 中断后 `getUploadedSize` 取权威字节 → `closeUpload`
+- 下载：`downloadFile` + `downloadType`/`downloadedSize`；传输列表用 `onDownloadProgress` 更新进度
+- 数据库只存 uploadKey 与临时路径；文件内容写磁盘
 
-约束：UUID 必须绑定用户与文件元数据；数据库只存会话/已收区间，文件内容写临时文件；v1 严格顺序分块并校验 `offset === nextOffset`；`clientUploadId` 保证 init 幂等；重复块同 offset+同哈希应幂等；完成前校验 size/hash；取消和 TTL 到期清理；下载文件变化时 ETag 不匹配必须重新初始化。建议预留 `TRANSFER_NOT_FOUND / EXPIRED / OFFSET_MISMATCH / INCOMPLETE / ALREADY_COMPLETE / CHECKSUM_MISMATCH` 错误码。
+错误码补充：`20007` 回收站禁止、`20008` 上传 KEY 不存在、`20009` 已收藏、`30001` 传参有误。
 
 ---
 
@@ -374,14 +397,36 @@ DTO: `{ path, new_name }`
 `new_name` must not be blank, `.`, `..`, or contain `/` or `\`  
 VO: `Void`
 
-*upload_file*　POST `/api/file/uploadFile`  
-**multipart** (`@ModelAttribute`, not JSON): `path` + `file`  
+*upload_file* (compat wrapper)  
+Legacy `POST /api/file/uploadFile` is **removed**. Frontend `uploadFile()` now wraps `initUpload` → one `continuableUploadFile` → `closeUpload`.
+
+*init_upload*　GET `/api/file/initUpload`  
+VO: `Result<String>` (uploadKey)
+
+*continuable_upload_file*　POST `/api/file/continuableUploadFile`  
+**multipart**: `uploadKey` + `targetPath` + `multipartFile` + `uploadType` (0 first / 1 resume)  
+VO: `Result<Void>`
+
+*get_uploaded_size*　GET `/api/file/getUploadedSize?uploadKey=`  
+VO: `Result<Long>`
+
+*close_upload*　POST `/api/file/closeUpload`  
+DTO: `{ uploadKey }`  
 VO: `Result<Void>`
 
 *download_file*　POST `/api/file/downloadFile`  
-DTO: `{ path }` JSON  
-Success: binary stream (`Content-Disposition: attachment`), **not Result**  
-Failure: may become a `Result` error via the exception handler
+DTO: `ContinuableDownloadDTO` `{ downloadFilePath, downloadedSize?, downloadType }`  
+`downloadType` 0 = full file; 1 = skip `downloadedSize` then stream the rest.  
+Success: binary stream (`Content-Disposition: attachment`), **not Result**
+
+*add_star_file*　POST `/api/file/addStarFile`  
+DTO: `{ starFilePath }` → `Void` (already starred → `20009`)
+
+*delete_starred_file*　POST `/api/file/deleteStarredFile`  
+DTO: `{ starFilePath }` → `Void`
+
+*get_starred_files*　POST `/api/file/getStarredFiles`  
+VO: `List<StarredFileVO>` (`{ starFilePath }`)
 
 *zip*　POST `/api/file/zip`  
 DTO: `ZipFileDTO` `{ path, targetDir }` (camelCase; `targetDir` must be a folder; empty string = parent of source)  
@@ -410,20 +455,13 @@ VO: `Void`
 DTO: `{ path }` (item in recycle bin)  
 VO: `Void`
 
-### Resumable transfer (proposed; backend not implemented yet)
+### Resumable transfer (live backend `0d04466`)
 
-The frontend is isolated behind `frontend/src/api/transfers.ts`.
+Frontend adapters: `files.ts` + `transfers.ts`. Online transfer list calls these endpoints (not the old proposed `/file/transfer/...` draft).
 
-- `POST /api/file/transfer/upload/init`
-- `GET /api/file/transfer/upload/{transferId}`
-- `PUT /api/file/transfer/upload/{transferId}` with raw bytes and `Content-Range`
-- `POST /api/file/transfer/upload/{transferId}/complete`
-- `DELETE /api/file/transfer/upload/{transferId}`
-- `POST /api/file/transfer/download/init`
-- `POST /api/file/transfer/download/range` with `Range` and `If-Range` (return `206`)
-- `DELETE /api/file/transfer/download/{transferId}`
-
-The server owns `nextOffset`; upload v1 is strictly sequential and retries are idempotent. Bind UUIDs to user/file metadata, keep bytes in temporary storage rather than the database, validate size/hash before atomic commit, expire abandoned sessions, and use ETag for download resume.
+- Upload: `initUpload` → chunked `continuableUploadFile` (~5MB) → `getUploadedSize` on resume → `closeUpload`
+- Download: `downloadFile` with `downloadType` / `downloadedSize`
+- Extra error codes: `20007` bin forbidden, `20008` upload key missing, `20009` already starred, `30001` bad args
 
 ---
 

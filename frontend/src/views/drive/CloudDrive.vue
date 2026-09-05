@@ -9,6 +9,7 @@
       @open-public="openPublic"
       @open-root="openRoot"
       @open-trash="openTrash"
+      @open-starred="openStarred"
       @note-offline="noteOffline"
       @logout="onLogout"
       @slot-over="onSlotOver"
@@ -79,8 +80,8 @@
         </div>
         <button type="button" :class="{ 'is-on': view === 'grid' }" @click="view = 'grid'">{{ t('drive.grid') }}</button>
         <button type="button" :class="{ 'is-on': view === 'list' }" @click="view = 'list'">{{ t('drive.list') }}</button>
-        <button v-if="canWrite && !atRoot" type="button" class="arc__cta" @click="openCreate">{{ t('drive.create') }}</button>
-        <button v-if="canWrite && !atRoot" type="button" class="arc__cta" @click="pickUpload">{{ t('drive.upload') }}</button>
+        <button v-if="canWrite && !atRoot && !inStarred" type="button" class="arc__cta" @click="openCreate">{{ t('drive.create') }}</button>
+        <button v-if="canWrite && !atRoot && !inStarred" type="button" class="arc__cta" @click="pickUpload">{{ t('drive.upload') }}</button>
         <input ref="fileInput" class="arc__hidden" type="file" @change="onFileInput" />
       </div>
 
@@ -91,11 +92,11 @@
         <button type="button" :disabled="!canBatchMove" @click="openMove">{{ t('drive.move') }}</button>
         <button
           type="button"
-          :disabled="inTrash ? !canRestore : !canActWrite"
-          @click="inTrash ? selected && onRestore(selected) : confirmDelete()"
-        >{{ inTrash ? t('drive.restore') : t('drive.delete') }}</button>
+          :disabled="inTrash ? !canRestore : inStarred ? !canActMeta : !canActWrite"
+          @click="inTrash ? selected && onRestore(selected) : inStarred ? onUnstarSelected() : confirmDelete()"
+        >{{ inTrash ? t('drive.restore') : inStarred ? t('drive.unstar') : t('drive.delete') }}</button>
         <button type="button" :disabled="!canActMeta" @click="noteOffline(t('drive.share'))">{{ t('drive.share') }}</button>
-        <button type="button" :disabled="!canActMeta" @click="noteOffline(t('drive.star'))">{{ t('drive.star') }}</button>
+        <button type="button" :disabled="!canActMeta || inStarred || inTrash" @click="onStarSelected">{{ t('drive.star') }}</button>
         <span v-if="selNote" class="arc__sel-note">{{ selNote }}</span>
       </p>
 
@@ -306,7 +307,7 @@ import FolderPicker from '@/components/drive/FolderPicker.vue'
 import Timeboard from '@/components/drive/Timeboard.vue'
 import ConcreteVoid from '@/components/drive/ConcreteVoid.vue'
 
-type Channel = 'mine' | 'public' | 'root' | 'trash'
+type Channel = 'mine' | 'public' | 'root' | 'trash' | 'starred'
 type SortKey = 'name' | 'type' | 'size' | 'time'
 type PickerWindow = Window & {
   showOpenFilePicker?: (options?: object) => Promise<FileSystemFileHandleLike[]>
@@ -403,7 +404,19 @@ const {
   goInto,
   goPath,
   ensureRecycleBin,
+  loadStarredPaths,
+  starredItemsFromPaths,
+  starItem,
+  unstarPath,
 } = useDriveFiles()
+
+type StarredRow = FilesVO & { starPath: string }
+
+const starredRows = ref<StarredRow[]>([])
+
+const listingItems = computed(() =>
+  channel.value === 'starred' ? starredRows.value : currentItems.value,
+)
 
 const roomRoot = computed(() => {
   if (!auth.user) {
@@ -412,8 +425,9 @@ const roomRoot = computed(() => {
   return roots.value.find((node) => node.fileName === String(auth.user?.userId)) ?? null
 })
 const inTrash = computed(() => isInTrash(crumbs.value, auth.user?.userId))
+const inStarred = computed(() => channel.value === 'starred')
 const selectedItems = computed(() =>
-  currentItems.value.filter((item) => selectedNames.value.includes(item.fileName)),
+  listingItems.value.filter((item) => selectedNames.value.includes(item.fileName)),
 )
 const selectedIsProtectedBin = computed(() =>
   selectedItems.value.some((item) =>
@@ -433,6 +447,7 @@ const canActWrite = computed(() =>
     selectedItems.value.length > 0 &&
       canWrite.value &&
       !atRoot.value &&
+      !inStarred.value &&
       !selectedIsProtectedBin.value,
   ),
 )
@@ -465,12 +480,15 @@ const selectedLabel = computed(() =>
     ? t('drive.selectedNone')
     : t('drive.selectedCount', { count: selectedItems.value.length }),
 )
-const canDragItems = computed(() => canWrite.value && !atRoot.value)
+const canDragItems = computed(() => canWrite.value && !atRoot.value && !inStarred.value)
 const selNote = computed(
   () => message.value || offlineNote.value || (loading.value || busy.value ? t('drive.loading') : ''),
 )
 
 const locationLabel = computed(() => {
+  if (inStarred.value) {
+    return t('drive.starred')
+  }
   if (crumbs.value.length === 0) {
     return t('drive.root')
   }
@@ -479,13 +497,14 @@ const locationLabel = computed(() => {
 
 const visibleItems = computed(() => {
   const q = query.value.trim().toLowerCase()
-  let items = currentItems.value
+  let items = listingItems.value
   if (q) {
     items = items.filter((item) => {
       const raw = item.fileName.toLowerCase()
       const decoded = decodeFileName(item.fileName).toLowerCase()
       const shown = archivalDisplayName(itemLabel(item)).toLowerCase()
-      return raw.includes(q) || decoded.includes(q) || shown.includes(q)
+      const starPath = 'starPath' in item ? String((item as StarredRow).starPath).toLowerCase() : ''
+      return raw.includes(q) || decoded.includes(q) || shown.includes(q) || starPath.includes(q)
     })
   }
   const copy = [...items]
@@ -591,6 +610,40 @@ function openRoot() {
   syncChannel()
 }
 
+async function openStarred() {
+  channel.value = 'starred'
+  clearSelection()
+  const paths = await loadStarredPaths()
+  starredRows.value = paths.map((path) => {
+    const [item] = starredItemsFromPaths([path])
+    return { ...(item as FilesVO), starPath: path }
+  })
+}
+
+async function onStarSelected() {
+  const item = selectedItems.value[0] ?? selected.value
+  if (!item || inStarred.value || inTrash.value) {
+    return
+  }
+  await starItem(item)
+}
+
+async function onUnstarSelected() {
+  const item = selectedItems.value[0] ?? selected.value
+  if (!item || !inStarred.value) {
+    return
+  }
+  const path = (item as StarredRow).starPath
+  if (!path) {
+    return
+  }
+  await unstarPath(path)
+  if (!message.value) {
+    starredRows.value = starredRows.value.filter((row) => row.starPath !== path)
+    clearSelection()
+  }
+}
+
 function jumpTo(index: number) {
   goTo(index)
   clearSelection()
@@ -614,7 +667,7 @@ function select(item: FilesVO, event?: MouseEvent) {
   )
   selected.value = selectedNames.value.includes(item.fileName)
     ? item
-    : (currentItems.value.find(
+    : (listingItems.value.find(
         (node) => node.fileName === selectedNames.value[selectedNames.value.length - 1],
       ) ?? null)
   reveal.value = true
@@ -739,9 +792,10 @@ async function queueDownload(item: FilesVO) {
       return
     }
   }
+  const starredPath = (item as StarredRow).starPath
   await transfers.enqueueDownload({
     fileName: itemLabel(item),
-    sourcePath: toServerPath([...crumbs.value, item.fileName]),
+    sourcePath: starredPath || toServerPath([...crumbs.value, item.fileName]),
     totalBytes: bytesOfNode(item),
     saveLocation,
     saveStrategy,
@@ -1097,6 +1151,8 @@ async function applyChannelQuery() {
     openRoot()
   } else if (wanted === 'trash') {
     await openTrash()
+  } else if (wanted === 'starred') {
+    await openStarred()
   } else if (auth.user) {
     openMine()
   }

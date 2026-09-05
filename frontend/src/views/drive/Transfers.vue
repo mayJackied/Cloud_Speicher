@@ -7,6 +7,7 @@
         @open-public="goDrive('public')"
         @open-root="goDrive('root')"
         @open-trash="goDrive('trash')"
+        @open-starred="goDrive('starred')"
         @note-offline="noteOffline"
         @logout="signOut"
       />
@@ -211,7 +212,7 @@ function formatDuration(seconds: number) {
   return `${minutes}m ${rest}s`
 }
 
-function goDrive(channel: 'mine' | 'public' | 'root' | 'trash') {
+function goDrive(channel: 'mine' | 'public' | 'root' | 'trash' | 'starred') {
   void router.push({ name: 'drive', query: { channel } })
 }
 
