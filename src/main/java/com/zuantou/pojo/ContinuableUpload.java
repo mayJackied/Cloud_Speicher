@@ -13,7 +13,5 @@ import lombok.NoArgsConstructor;
 public class ContinuableUpload {
     @TableId
     private String uploadKey;
-    private Integer userId;
-    private Long uploadedSize;
     private String uploadFilePath;
 }

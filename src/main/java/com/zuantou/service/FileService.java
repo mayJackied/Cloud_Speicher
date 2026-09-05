@@ -2,6 +2,8 @@ package com.zuantou.service;
 
 import com.zuantou.pojo.Result;
 import com.zuantou.pojo.dto.file.*;
+import com.zuantou.pojo.dto.file.continueableDTO.CloseUploadDTO;
+import com.zuantou.pojo.dto.file.continueableDTO.ContinuableDownloadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.ContinuableUploadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.GetUploadedSizeDTO;
 import com.zuantou.pojo.vo.FilesVO;
@@ -20,10 +22,6 @@ public interface FileService {
 
     Result<Void> renameFile(RenameFileDTO renameFileDTO);
 
-    Result<Void> uploadFile(UploadFileDTO uploadFileDTO);
-
-    void downloadFile(DownloadFileDTO downloadFileDTO, HttpServletResponse response);
-
     Result<Void> zip(ZipFileDTO zipFileDTO);
 
     Result<Void> unzip(ZipFileDTO zipFileDTO);
@@ -41,4 +39,8 @@ public interface FileService {
     Result<Void> continuableUpload(ContinuableUploadDTO continuableUploadDTO);
 
     Result<Long> getUploadedSize(GetUploadedSizeDTO getUploadedSizeDTO);
+
+    Result<Void> closeUpload(CloseUploadDTO closeUploadDTO);
+
+    void continuableDownload(ContinuableDownloadDTO continuableDownloadDTO, HttpServletResponse response);
 }

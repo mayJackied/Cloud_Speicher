@@ -19,3 +19,11 @@ ZipFileDTO { String path; String targetDir } Tipp: targetDir 要求是个文件�
 MoveFileDTO { String path; String targetDir; Integer fileHandle } Tipp: targetDir 禁止为空; fileHandle 是如果存在同名文件处理方式; 0 默认值, 不处理; 1 替换; 2 忽略(前端一般不发送这个请求)
 
 DeleteBinAllFilesDTO { Integer pathType } Tipp: PUBLIC_PATH = 3; USER_PATH = 4
+
+CloseUploadDTO { String uploadKey }
+
+ContinuableDownloadDTO {String downloadFilePath; Long downloadedSize; int DownloadType} Tipp: DownloadType = 0: 首次下载, 1: 断点重连
+
+ContinuableUploadDTO {String uploadKey; String targetPath; MultipartFile multipartFile; int UploadType; } Tipp: targetPath 为上传文件的文件夹; UploadType = 0: 首次上传, 1: 断点重连
+
+GetUploadedSizeDTO { String uploadKey }

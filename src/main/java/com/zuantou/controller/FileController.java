@@ -2,6 +2,8 @@ package com.zuantou.controller;
 
 import com.zuantou.pojo.Result;
 import com.zuantou.pojo.dto.file.*;
+import com.zuantou.pojo.dto.file.continueableDTO.CloseUploadDTO;
+import com.zuantou.pojo.dto.file.continueableDTO.ContinuableDownloadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.ContinuableUploadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.GetUploadedSizeDTO;
 import com.zuantou.pojo.vo.FilesVO;
@@ -49,16 +51,6 @@ public class FileController {
         return fileService.renameFile(renameFileDTO);
     }
 
-    @PostMapping("/uploadFile")
-    public Result<Void> uploadFile(@ModelAttribute UploadFileDTO uploadFileDTO) {
-        return fileService.uploadFile(uploadFileDTO);
-    }
-
-    @PostMapping("/downloadFile")
-    public void downloadFile(@RequestBody DownloadFileDTO downloadFileDTO, HttpServletResponse response) {
-        fileService.downloadFile(downloadFileDTO, response);
-    }
-
     @PostMapping("/zip")
     public Result<Void> zip(@RequestBody ZipFileDTO zipFileDTO){
         return fileService.zip(zipFileDTO);
@@ -98,6 +90,16 @@ public class FileController {
     @GetMapping("/getUploadedSize")
     public Result<Long> getUploadedSize(GetUploadedSizeDTO getUploadedSizeDTO){
         return fileService.getUploadedSize(getUploadedSizeDTO);
+    }
+
+    @PostMapping("/closeUpload")
+    public Result<Void> closeUpload(@RequestBody CloseUploadDTO closeUploadDTO){
+        return fileService.closeUpload(closeUploadDTO);
+    }
+
+    @PostMapping("/downloadFile")
+    public void downloadFile(@RequestBody ContinuableDownloadDTO continuableDownloadDTO, HttpServletResponse response) {
+        fileService.continuableDownload(continuableDownloadDTO, response);
     }
 
     public FileController(FileService fileService) {

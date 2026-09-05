@@ -38,7 +38,7 @@ File {
 
 *get_files*
 get: /api/file/getFiles
-VO: <List<MyFile> filesVOS>
+VO: Result<List<MyFile> filesVOS>
 
 *add_file*
 post: /api/file/addFile
@@ -54,15 +54,6 @@ VO: Result<Void>
 post: /api/file/renameFile
 DTO: RenameFileDTO renameFileDTO
 VO: Result<Void>
-
-*upload_file*
-post: /api/file/uploadFile
-DTO UploadFileDTO uploadFileDTO
-VO: Result<Void>
-
-*download_file*
-post: /api/file/downloadFile
-DTO: DownloadFileDTO downloadFileDTO
 
 *zip*
 post: /api/file/zip
@@ -88,4 +79,26 @@ DTO: DeleteBinAllFilesDTO deleteBinAllFilesDTO
 post: /api/file/restoreFile
 DTO: DeleteFileDTO deleteFileDTO
 
+*init_upload*
+get: /api/file/initUpload
+VO: Result<String>
+
+*continuable_upload_file*
+post: /api/file/continuableUploadFile
+DTO: ContinuableUploadDTO continuableUploadDTO
+VO: Result<Void>
+
+*get_uploaded_size*
+get: /api/file/getUploadedSize
+DTO: GetUploadedSizeDTO getUploadedSizeDTO
+VO: Result<Long>
+
+*close_upload*
+post: /api/file/closeUpload
+DTO: CloseUploadDTO closeUploadDTO
+VO: Result<Void>
+
+*download_file*
+post: /api/file/downloadFile
+DTO: ContinuableDownloadDTO continuableDownloadDTO
 }

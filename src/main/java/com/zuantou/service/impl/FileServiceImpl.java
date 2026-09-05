@@ -14,6 +14,8 @@ import com.zuantou.common.utils.UserContext;
 import com.zuantou.common.properties.MyValFileProperties;
 import com.zuantou.pojo.Result;
 import com.zuantou.pojo.dto.file.*;
+import com.zuantou.pojo.dto.file.continueableDTO.CloseUploadDTO;
+import com.zuantou.pojo.dto.file.continueableDTO.ContinuableDownloadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.ContinuableUploadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.GetUploadedSizeDTO;
 import com.zuantou.pojo.vo.FilesVO;
@@ -138,98 +140,6 @@ public class FileServiceImpl implements FileService {
             return Result.error(ErrorCode.FILE_OPERATION_FAILED);
         }
         return Result.success();
-    }
-
-    @Override
-    public Result<Void> uploadFile(UploadFileDTO uploadFileDTO) {
-        Integer errorCode = checkFilePermission(uploadFileDTO.getPath(), OTHER, CommonProperties.COMMON_PATH_OPERATION);
-        if (errorCode != null) {
-            return Result.error(errorCode);
-        }
-
-        MultipartFile multipartFile = uploadFileDTO.getFile();
-
-        if (multipartFile == null || multipartFile.isEmpty()) {
-            return Result.error(ErrorCode.FILE_OPERATION_FAILED);
-        }
-
-        String fileName = multipartFile.getOriginalFilename();
-
-        if (fileName == null || fileName.isBlank()) {
-            return Result.error(ErrorCode.FILE_NAME_ILLEGAL);
-        }
-
-        File newFile = new File(uploadFileDTO.getPath(), fileName);
-
-        if (newFile.exists()) {
-            newFile = insertedFile(newFile, newFile.getParentFile());
-            fileName = newFile.getName();
-        }
-        try {
-            if (!newFile.createNewFile()) {
-                return Result.error(ErrorCode.EXCEPTION);
-            }
-        } catch (IOException e) {
-            return Result.error(ErrorCode.EXCEPTION);
-        }
-
-        Path target = Paths.get(
-                fileProperties.getPath(),
-                UserContext.getUserId().toString(),
-                fileName
-        ).toAbsolutePath().normalize();
-
-        try {
-            multipartFile.transferTo(target.toFile());
-        } catch (IOException e) {
-            return Result.error(ErrorCode.FILE_OPERATION_FAILED);
-        }
-
-        return Result.success();
-    }
-
-    @Override
-    public void downloadFile(DownloadFileDTO downloadFileDTO, HttpServletResponse response) {
-        Integer errorCode = checkFilePermission(downloadFileDTO.getPath(), SEARCH_AND_DOWNLOAD, CommonProperties.COMMON_PATH_OPERATION);
-
-        if (errorCode != null) {
-            throw new BusinessException(errorCode);
-        }
-
-        File file = new File(downloadFileDTO.getPath());
-
-        if (!file.exists() || !file.isFile()) {
-            throw new BusinessException(ErrorCode.FILE_NOT_FOUND);
-        }
-
-        response.setContentType("application/octet-stream");
-
-        ContentDisposition contentDisposition = ContentDisposition
-                .attachment()
-                .filename(file.getName(), StandardCharsets.UTF_8)
-                .build();
-
-        response.setHeader(
-                HttpHeaders.CONTENT_DISPOSITION,
-                contentDisposition.toString()
-        );
-        try (
-                FileInputStream inputStream = new FileInputStream(file);
-
-                OutputStream outputStream = response.getOutputStream()
-        ) {
-
-            byte[] buffer = new byte[8192];
-
-            int length;
-
-            while ((length = inputStream.read(buffer)) != -1) {
-                outputStream.write(buffer, 0, length);
-            }
-
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
     }
 
     @Override
@@ -387,7 +297,7 @@ public class FileServiceImpl implements FileService {
     @Override
     public Result<String> initUpload() {
         String uuid = UUID.randomUUID().toString();
-        continuableUploadMapper.insert(new ContinuableUpload(uuid, UserContext.getUserId(), 0L, null));
+        continuableUploadMapper.insert(new ContinuableUpload(uuid, null));
         return Result.success(uuid);
     }
 
@@ -464,6 +374,65 @@ public class FileServiceImpl implements FileService {
         }
         try {
             return Result.success(Files.size(Path.of(continuableUpload.getUploadFilePath())));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public Result<Void> closeUpload(CloseUploadDTO closeUploadDTO) {
+        ContinuableUpload continuableUpload = continuableUploadMapper.selectById(closeUploadDTO.getUploadKey());
+        if (continuableUpload == null) {
+            return Result.error(ErrorCode.UPLOAD_KEY_NOT_FOUND);
+        }
+        continuableUploadMapper.deleteById(continuableUpload.getUploadKey());
+        return Result.success();
+    }
+
+    @Override
+    public void continuableDownload(ContinuableDownloadDTO continuableDownloadDTO, HttpServletResponse response) {
+        Integer errorCode = checkFilePermission(continuableDownloadDTO.getDownloadFilePath(), SEARCH_AND_DOWNLOAD, CommonProperties.COMMON_PATH_OPERATION);
+
+        if (errorCode != null) {
+            throw new BusinessException(errorCode);
+        }
+
+        File downloadFile = new File(continuableDownloadDTO.getDownloadFilePath());
+
+        if (!downloadFile.exists()) {
+            throw new BusinessException(ErrorCode.FILE_NOT_FOUND);
+        }
+
+        response.setContentType("application/octet-stream");
+
+        ContentDisposition contentDisposition = ContentDisposition
+                .attachment()
+                .filename(downloadFile.getName(), StandardCharsets.UTF_8)
+                .build();
+
+        response.setHeader(
+                HttpHeaders.CONTENT_DISPOSITION,
+                contentDisposition.toString()
+        );
+        try (FileInputStream fis = new FileInputStream(downloadFile); OutputStream os = response.getOutputStream()) {
+            if (continuableDownloadDTO.getDownloadType() == ContinuableDownloadDTO.NOT_FIRST_DOWNLOAD_TYPE){
+                Long downloadedSize = continuableDownloadDTO.getDownloadedSize();
+                if (downloadedSize == null) {
+                    throw new BusinessException(ErrorCode.ARGS_ILLEGAL);
+                }
+                long skipped = fis.skip(downloadedSize);
+
+                if (skipped != downloadedSize) {
+                    throw new BusinessException(ErrorCode.ARGS_ILLEGAL);
+                }
+            }
+            byte[] buffer = new byte[fileProperties.getUploadBufferSize() * 1024 * 1024];
+
+            int len;
+
+            while ((len = fis.read(buffer)) != -1) {
+                os.write(buffer, 0, len);
+            }
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
