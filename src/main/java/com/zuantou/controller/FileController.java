@@ -1,15 +1,14 @@
 package com.zuantou.controller;
 
-import com.zuantou.pojo.Result;
+import com.zuantou.pojo.vo.Result;
 import com.zuantou.pojo.dto.file.*;
 import com.zuantou.pojo.dto.file.continueableDTO.CloseUploadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.ContinuableDownloadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.ContinuableUploadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.GetUploadedSizeDTO;
 import com.zuantou.pojo.vo.FilesVO;
+import com.zuantou.pojo.vo.StarredFileVO;
 import com.zuantou.service.FileService;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.bind.annotation.*;
 
@@ -17,25 +16,21 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/file")
-@Tag(name = "Files")
 public class FileController {
     final private FileService fileService;
 
 
     @GetMapping("/getFiles")
-    @Operation(summary = "get_file")
     public Result<List<FilesVO>> getFiles() {
         return fileService.getFiles();
     }
 
     @PostMapping("/addFile")
-    @Operation(summary = "add_file")
     public Result<Void> addFile(@RequestBody FileDTO fileDTO) {
         return fileService.addFile(fileDTO);
     }
 
     @PostMapping("/deleteFile")
-    @Operation(summary = "delete_file")
     public Result<Void> deleteFile(@RequestBody DeleteFileDTO deleteFileDTO) {
         return fileService.deleteFile(deleteFileDTO);
     }
@@ -46,7 +41,6 @@ public class FileController {
     }
 
     @PostMapping("/renameFile")
-    @Operation(summary = "rename_file")
     public Result<Void> renameFile(@RequestBody RenameFileDTO renameFileDTO) {
         return fileService.renameFile(renameFileDTO);
     }
@@ -55,6 +49,7 @@ public class FileController {
     public Result<Void> zip(@RequestBody ZipFileDTO zipFileDTO){
         return fileService.zip(zipFileDTO);
     }
+
     @PostMapping("/unzip")
     public Result<Void> unzip(@RequestBody ZipFileDTO zipFileDTO){
         return fileService.unzip(zipFileDTO);
@@ -64,14 +59,17 @@ public class FileController {
     public Result<Void> moveFile(@RequestBody MoveFileDTO moveFileDTO){
         return fileService.moveFile(moveFileDTO);
     }
+
    @PostMapping("/deleteBinFile")
     public Result<Void> deleteBinFile(@RequestBody DeleteFileDTO deleteFileDTO){
         return fileService.deleteBinFile(deleteFileDTO);
     }
+
    @PostMapping("/deleteBinAllFiles")
     public Result<Void> deleteBinAllFiles(@RequestBody DeleteBinAllFilesDTO deleteBinAllFilesDTO){
         return fileService.deleteBinAllFiles(deleteBinAllFilesDTO);
     }
+
    @PostMapping("/restoreFile")
     public Result<Void> restoreFile(@RequestBody DeleteFileDTO deleteFileDTO){
         return fileService.restoreFile(deleteFileDTO);
@@ -100,6 +98,21 @@ public class FileController {
     @PostMapping("/downloadFile")
     public void downloadFile(@RequestBody ContinuableDownloadDTO continuableDownloadDTO, HttpServletResponse response) {
         fileService.continuableDownload(continuableDownloadDTO, response);
+    }
+
+    @PostMapping("/addStarFile")
+    public Result<Void> addStarFile(StarFileDTO addStarFileDTO){
+        return fileService.addStarFile(addStarFileDTO);
+    }
+
+    @PostMapping("/deleteStarredFile")
+    public Result<Void> deleteStarredFile(StarFileDTO deleteStarredFileDTO){
+        return fileService.deleteStarredFile(deleteStarredFileDTO);
+    }
+
+    @PostMapping("/getStarredFiles")
+    public Result<List<StarredFileVO>> getStarredFiles(){
+        return fileService.getStarredFiles();
     }
 
     public FileController(FileService fileService) {

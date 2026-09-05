@@ -101,4 +101,18 @@ VO: Result<Void>
 *download_file*
 post: /api/file/downloadFile
 DTO: ContinuableDownloadDTO continuableDownloadDTO
+
+*add_star_file*
+post: /api/file/addStarFile
+DTO: StarFileDTO addStarFileDTO
+VO: Result<Void>
+
+*delete_starred_file*
+post: /api/file/deleteStarredFile
+DTO: StarFileDTO deleteStarredFileDTO
+VO: Result<Void>
+
+*get_starred_files*
+post: /api/file/getStarredFiles
+VO: Result<List<StarredFileVO>>
 }

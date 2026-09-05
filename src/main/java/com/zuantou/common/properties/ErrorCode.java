@@ -26,6 +26,7 @@ public final class ErrorCode {
     public static final Integer FILE_DUPLICATE = 20006;
     public static final Integer BIN_FILE_NOT_ALLOWED = 20007;
     public static final Integer UPLOAD_KEY_NOT_FOUND = 20008;
+    public static final Integer FILE_STARRED = 20009;
 
     public static final Integer ARGS_ILLEGAL = 30001;
 }

@@ -1,12 +1,13 @@
 package com.zuantou.service;
 
-import com.zuantou.pojo.Result;
+import com.zuantou.pojo.vo.Result;
 import com.zuantou.pojo.dto.file.*;
 import com.zuantou.pojo.dto.file.continueableDTO.CloseUploadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.ContinuableDownloadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.ContinuableUploadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.GetUploadedSizeDTO;
 import com.zuantou.pojo.vo.FilesVO;
+import com.zuantou.pojo.vo.StarredFileVO;
 import jakarta.servlet.http.HttpServletResponse;
 
 import java.util.List;
@@ -43,4 +44,10 @@ public interface FileService {
     Result<Void> closeUpload(CloseUploadDTO closeUploadDTO);
 
     void continuableDownload(ContinuableDownloadDTO continuableDownloadDTO, HttpServletResponse response);
+
+    Result<Void> addStarFile(StarFileDTO addStarFileDTO);
+
+    Result<Void> deleteStarredFile(StarFileDTO deleteStarredFileDTO);
+
+    Result<List<StarredFileVO>> getStarredFiles();
 }

@@ -6,7 +6,7 @@ import com.zuantou.common.properties.ErrorCode;
 import com.zuantou.common.jwt.JwtUtils;
 import com.zuantou.common.utils.UserContext;
 import com.zuantou.pojo.JwtBlacklist;
-import com.zuantou.pojo.Result;
+import com.zuantou.pojo.vo.Result;
 import jakarta.servlet.*;
 import jakarta.servlet.annotation.WebFilter;
 import jakarta.servlet.http.HttpServletRequest;

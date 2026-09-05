@@ -1,6 +1,6 @@
 package com.zuantou.common.exception;
 
-import com.zuantou.pojo.Result;
+import com.zuantou.pojo.vo.Result;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 

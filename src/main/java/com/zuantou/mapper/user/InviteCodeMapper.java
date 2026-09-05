@@ -1,4 +1,4 @@
-package com.zuantou.mapper;
+package com.zuantou.mapper.user;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.zuantou.pojo.InviteCode;

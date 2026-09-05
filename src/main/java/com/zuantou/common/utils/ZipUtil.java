@@ -1,7 +1,7 @@
 package com.zuantou.common.utils;
 
 import com.zuantou.common.properties.ErrorCode;
-import com.zuantou.pojo.Result;
+import com.zuantou.pojo.vo.Result;
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
 import org.apache.commons.compress.archivers.zip.ZipArchiveInputStream;
 import org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream;
@@ -24,7 +24,9 @@ public class ZipUtil {
             zipFile = new File(targetDir, sourceFile.getName()+".zip");
         }
 
-        zipFile.createNewFile();
+        if (!zipFile.createNewFile()) {
+            return Result.error(ErrorCode.EXCEPTION);
+        }
 
         try (
                 FileOutputStream fileOutputStream =
@@ -49,90 +51,26 @@ public class ZipUtil {
      */
     private static void compress(File file, File baseDir, ZipArchiveOutputStream zipOutputStream) throws IOException {
 
-
-        // ============================================================
-        // 第 1 步：计算文件在 ZIP 中的路径
-        // ============================================================
-
-        // 例如：
-        //
-        // baseDir：
-        // E:/resource
-        //
-        // file：
-        // E:/resource/images/a.jpg
-        //
-        // 最终：
-        //
-        // entryName：
-        // images/a.jpg
-        //
         String entryName =
                 baseDir.toPath()
                         .relativize(file.toPath())
                         .toString()
                         .replace("\\", "/");
 
-
-        // ============================================================
-        // 第 2 步：判断当前是不是文件夹
-        // ============================================================
-
         if (file.isDirectory()) {
-
-
-            // ========================================================
-            // 第 3 步：创建 ZIP 中的目录 Entry
-            // ========================================================
-
-            // 例如：
-            //
-            // images/
-            //
-            // 注意最后的 "/"。
-            //
-            // 这样 ZIP 软件才能知道这是一个目录。
             ZipArchiveEntry entry =
                     new ZipArchiveEntry(entryName + "/");
 
-
-            // 告诉 ZIP：
-            //
-            // “我要开始写 images 这个目录了。”
             zipOutputStream.putArchiveEntry(entry);
 
-
-            // 目录本身没有数据，
-            // 所以直接关闭这个 Entry。
             zipOutputStream.closeArchiveEntry();
-
-
-            // ========================================================
-            // 第 4 步：获取文件夹里面的所有文件
-            // ========================================================
 
             File[] files = file.listFiles();
 
             if (files == null) {
                 return;
             }
-
-
-            // ========================================================
-            // 第 5 步：递归处理每一个文件
-            // ========================================================
-
             for (File child : files) {
-
-                // 如果 child 是文件：
-                //
-                //     直接压缩
-                //
-                // 如果 child 是文件夹：
-                //
-                //     再次进入 compress()
-                //
-                // 这样就可以一直向下遍历。
                 compress(
                         child,
                         baseDir,
@@ -141,56 +79,23 @@ public class ZipUtil {
             }
 
         } else {
-
-
-            // ========================================================
-            // 第 6 步：当前是普通文件
-            // ========================================================
-
-            // 创建 ZIP Entry。
-            //
-            // 例如：
-            //
-            // images/a.jpg
-            //
             ZipArchiveEntry entry =
                     new ZipArchiveEntry(
                             file,
                             entryName
                     );
-
-
-            // 告诉 ZIP：
-            //
-            // “我要开始写 images/a.jpg。”
             zipOutputStream.putArchiveEntry(entry);
-
-
-            // ========================================================
-            // 第 7 步：打开原始文件
-            // ========================================================
 
             try (
                     FileInputStream inputStream =
                             new FileInputStream(file)
             ) {
 
-                // 8KB 缓冲区
                 byte[] buffer = new byte[8192];
 
                 int len;
 
-
-                // ====================================================
-                // 第 8 步：读取原始文件
-                // ====================================================
-
                 while ((len = inputStream.read(buffer)) != -1) {
-
-                    // =================================================
-                    // 第 9 步：写入 ZIP
-                    // =================================================
-
                     zipOutputStream.write(
                             buffer,
                             0,
@@ -198,12 +103,6 @@ public class ZipUtil {
                     );
                 }
             }
-
-
-            // ========================================================
-            // 第 10 步：当前文件写完
-            // ========================================================
-
             zipOutputStream.closeArchiveEntry();
         }
     }
@@ -223,7 +122,9 @@ public class ZipUtil {
         }
 
         if (!targetDir.exists()) {
-            targetDir.mkdirs();
+            if (!targetDir.mkdirs()) {
+                return Result.error(ErrorCode.EXCEPTION);
+            }
         }
 
         InputStream inputStream= new FileInputStream(zipFile);
@@ -240,7 +141,9 @@ public class ZipUtil {
 
             if (entry.isDirectory()) {
 
-                targetFile.mkdirs();
+                if (!targetFile.mkdirs()) {
+                    return Result.error(ErrorCode.EXCEPTION);
+                }
 
                 continue;
             }
@@ -250,7 +153,9 @@ public class ZipUtil {
 
 
             if (!parentDir.exists()) {
-                parentDir.mkdirs();
+                if (!parentDir.mkdirs()) {
+                    return Result.error(ErrorCode.EXCEPTION);
+                }
             }
 
             OutputStream outputStream = new FileOutputStream(targetFile);

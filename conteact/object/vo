@@ -7,3 +7,5 @@ LoginVO loginVO { String token Integer user_id; String name; boolean isAdmin}
 CreatInviteCodeVO { String inviteCode }
 
 FilesVO { List <FilesVO> filesVOS; String file_name; Long length; Long last_modified; boolean is_file }
+
+StarredFileVO { private String starFilePath }

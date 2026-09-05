@@ -1,4 +1,4 @@
-package com.zuantou.pojo;
+package com.zuantou.pojo.vo;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

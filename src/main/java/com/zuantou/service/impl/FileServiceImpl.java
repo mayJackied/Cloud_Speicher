@@ -1,27 +1,32 @@
 package com.zuantou.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.zuantou.common.exception.BusinessException;
 import com.zuantou.common.properties.CommonProperties;
 import com.zuantou.common.properties.ErrorCode;
 import com.zuantou.common.utils.ZipUtil;
-import com.zuantou.mapper.ContinuableUploadMapper;
-import com.zuantou.mapper.DeleteBinFileSourceMapper;
-import com.zuantou.mapper.UserMapper;
+import com.zuantou.mapper.file.ContinuableUploadMapper;
+import com.zuantou.mapper.file.DeleteBinFileSourceMapper;
+import com.zuantou.mapper.file.StarredFileMapper;
+import com.zuantou.mapper.user.UserMapper;
 import com.zuantou.pojo.ContinuableUpload;
 import com.zuantou.pojo.DeleteBinFileSource;
+import com.zuantou.pojo.StarredFile;
 import com.zuantou.pojo.User;
 import com.zuantou.common.utils.UserContext;
 import com.zuantou.common.properties.MyValFileProperties;
-import com.zuantou.pojo.Result;
+import com.zuantou.pojo.vo.Result;
 import com.zuantou.pojo.dto.file.*;
 import com.zuantou.pojo.dto.file.continueableDTO.CloseUploadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.ContinuableDownloadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.ContinuableUploadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.GetUploadedSizeDTO;
 import com.zuantou.pojo.vo.FilesVO;
+import com.zuantou.pojo.vo.StarredFileVO;
 import com.zuantou.service.FileService;
 import com.zuantou.common.utils.FileUtil;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.BeanUtils;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
@@ -40,6 +45,7 @@ public class FileServiceImpl implements FileService {
     private final UserMapper userMapper;
     private final DeleteBinFileSourceMapper deleteBinFileSourceMapper;
     private final ContinuableUploadMapper continuableUploadMapper;
+    private final StarredFileMapper starredFileMapper;
 
     @Override
     public Result<List<FilesVO>> getFiles() {
@@ -341,7 +347,7 @@ public class FileServiceImpl implements FileService {
             }
             case ContinuableUploadDTO.NOT_FIRST_UPLOAD_TYPE -> {
                 String path = continuableUpload.getUploadFilePath();
-                if (path == null || path.isEmpty()){
+                if (path == null || path.isEmpty()) {
                     return Result.error(ErrorCode.UPLOAD_KEY_NOT_FOUND);
                 }
                 uploadFilePath = new File(path);
@@ -352,7 +358,7 @@ public class FileServiceImpl implements FileService {
         }
 
         try (InputStream input = multipartFile.getInputStream();
-             FileOutputStream fos = new FileOutputStream(uploadFilePath,true)) {
+             FileOutputStream fos = new FileOutputStream(uploadFilePath, true)) {
 
             byte[] buffer = new byte[fileProperties.getUploadBufferSize() * 1024 * 1024];
             int len;
@@ -391,7 +397,7 @@ public class FileServiceImpl implements FileService {
 
     @Override
     public void continuableDownload(ContinuableDownloadDTO continuableDownloadDTO, HttpServletResponse response) {
-        Integer errorCode = checkFilePermission(continuableDownloadDTO.getDownloadFilePath(), SEARCH_AND_DOWNLOAD, CommonProperties.COMMON_PATH_OPERATION);
+        Integer errorCode = checkFilePermission(continuableDownloadDTO.getDownloadFilePath(), SEARCH_OR_DOWNLOAD_OR_STAR, CommonProperties.COMMON_PATH_OPERATION);
 
         if (errorCode != null) {
             throw new BusinessException(errorCode);
@@ -415,7 +421,7 @@ public class FileServiceImpl implements FileService {
                 contentDisposition.toString()
         );
         try (FileInputStream fis = new FileInputStream(downloadFile); OutputStream os = response.getOutputStream()) {
-            if (continuableDownloadDTO.getDownloadType() == ContinuableDownloadDTO.NOT_FIRST_DOWNLOAD_TYPE){
+            if (continuableDownloadDTO.getDownloadType() == ContinuableDownloadDTO.NOT_FIRST_DOWNLOAD_TYPE) {
                 Long downloadedSize = continuableDownloadDTO.getDownloadedSize();
                 if (downloadedSize == null) {
                     throw new BusinessException(ErrorCode.ARGS_ILLEGAL);
@@ -438,8 +444,53 @@ public class FileServiceImpl implements FileService {
         }
     }
 
+    @Override
+    public Result<Void> addStarFile(StarFileDTO addStarFileDTO) {
+        Integer errorCode = checkFilePermission(addStarFileDTO.getStarFilePath(), SEARCH_OR_DOWNLOAD_OR_STAR, CommonProperties.COMMON_PATH_OPERATION);
+        if (errorCode != null) {
+            return Result.error(errorCode);
+        }
+        StarredFile starredFile = starredFileMapper.selectOne(
+                new LambdaQueryWrapper<StarredFile>()
+                        .eq(StarredFile::getUserId, UserContext.getUserId())
+                        .eq(StarredFile::getStarredFilePath, addStarFileDTO.getStarFilePath())
+        );
+        if (starredFile == null) {
+            starredFileMapper.insert(new StarredFile(UserContext.getUserId(), addStarFileDTO.getStarFilePath()));
+            return Result.success();
+        }
+        return Result.error(ErrorCode.FILE_STARRED);
+    }
+
+    @Override
+    public Result<Void> deleteStarredFile(StarFileDTO deleteStarredFileDTO) {
+        Integer errorCode = checkFilePermission(deleteStarredFileDTO.getStarFilePath(), SEARCH_OR_DOWNLOAD_OR_STAR, CommonProperties.COMMON_PATH_OPERATION);
+        if (errorCode != null) {
+            return Result.error(errorCode);
+        }
+        starredFileMapper.delete(
+                new LambdaQueryWrapper<StarredFile>()
+                        .eq(StarredFile::getUserId, UserContext.getUserId())
+                        .eq(StarredFile::getStarredFilePath, deleteStarredFileDTO.getStarFilePath())
+        );
+        return Result.success();
+    }
+
+    @Override
+    public Result<List<StarredFileVO>> getStarredFiles() {
+        List<StarredFileVO> starredFileVOS = new ArrayList<>();
+        BeanUtils.copyProperties(starredFileMapper.selectStarredFilesByUserId(UserContext.getUserId()),starredFileVOS);
+        return Result.success(starredFileVOS);
+    }
+
     // 分享, 收藏
 
+    /**
+     * @param path          对象文件的路径
+     * @param operationType 对对象文件的操作是在 public 文件里面被普通用户允许的查找、下载或者是添加收藏 还是 在其它不被允许的
+     * @param fileType      这个文件的类型是普通文件 还是 回收站的文件
+     * @return 错误码 or null
+     */
     private Integer checkFilePermission(String path, int operationType, int fileType) {
         Path target = Paths.get(path).toAbsolutePath().normalize();
         if (fileType != CommonProperties.COMMON_ADD_OPERATION) {
@@ -480,7 +531,7 @@ public class FileServiceImpl implements FileService {
         }
         boolean admin = user.isAdmin();
 
-        if (target.startsWith(userPath) || admin || (operationType == SEARCH_AND_DOWNLOAD && !target.startsWith(userPath))) {
+        if (target.startsWith(userPath) || admin || (operationType == SEARCH_OR_DOWNLOAD_OR_STAR && !target.startsWith(userPath))) {
             return null;
         }
         return ErrorCode.NO_PERMISSION;
@@ -580,13 +631,14 @@ public class FileServiceImpl implements FileService {
         return newName.toString();
     }
 
-    private final int SEARCH_AND_DOWNLOAD = 0;
+    private final int SEARCH_OR_DOWNLOAD_OR_STAR = 0;
     private final int OTHER = 1;
 
-    public FileServiceImpl(MyValFileProperties fileProperties, UserMapper userMapper, DeleteBinFileSourceMapper deleteBinFileSourceMapper, ContinuableUploadMapper continuableUploadMapper) {
+    public FileServiceImpl(MyValFileProperties fileProperties, UserMapper userMapper, DeleteBinFileSourceMapper deleteBinFileSourceMapper, ContinuableUploadMapper continuableUploadMapper, StarredFileMapper starredFileMapper) {
         this.fileProperties = fileProperties;
         this.userMapper = userMapper;
         this.deleteBinFileSourceMapper = deleteBinFileSourceMapper;
         this.continuableUploadMapper = continuableUploadMapper;
+        this.starredFileMapper = starredFileMapper;
     }
 }

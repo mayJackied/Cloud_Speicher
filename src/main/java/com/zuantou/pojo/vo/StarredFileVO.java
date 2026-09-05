@@ -1,8 +1,8 @@
-package com.zuantou.pojo.dto.file;
+package com.zuantou.pojo.vo;
 
 import lombok.Data;
 
 @Data
-public class StarFileDTO {
+public class StarredFileVO {
     private String starFilePath;
 }

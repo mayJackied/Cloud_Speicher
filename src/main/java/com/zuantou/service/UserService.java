@@ -1,6 +1,6 @@
 package com.zuantou.service;
 
-import com.zuantou.pojo.Result;
+import com.zuantou.pojo.vo.Result;
 import com.zuantou.pojo.dto.user.CheckUserNameDTO;
 import com.zuantou.pojo.dto.user.LoginDTO;
 import com.zuantou.pojo.dto.user.RegisterDTO;

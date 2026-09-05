@@ -2,8 +2,8 @@ package com.zuantou.common.jwt;
 
 import com.zuantou.common.properties.MyValFileProperties;
 import com.zuantou.common.properties.MyValProperties;
-import com.zuantou.mapper.DeleteBinFileSourceMapper;
-import com.zuantou.mapper.JwtBlacklistMapper;
+import com.zuantou.mapper.file.DeleteBinFileSourceMapper;
+import com.zuantou.mapper.user.JwtBlacklistMapper;
 import com.zuantou.pojo.DeleteBinFileSource;
 import com.zuantou.pojo.JwtBlacklist;
 import org.springframework.boot.CommandLineRunner;
