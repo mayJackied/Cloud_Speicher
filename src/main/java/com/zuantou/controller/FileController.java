@@ -1,13 +1,11 @@
 package com.zuantou.controller;
 
-import com.zuantou.pojo.vo.Result;
+import com.zuantou.pojo.vo.*;
 import com.zuantou.pojo.dto.file.*;
 import com.zuantou.pojo.dto.file.continueableDTO.CloseUploadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.ContinuableDownloadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.ContinuableUploadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.GetUploadedSizeDTO;
-import com.zuantou.pojo.vo.FilesVO;
-import com.zuantou.pojo.vo.StarredFileVO;
 import com.zuantou.service.FileService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.bind.annotation.*;
@@ -21,7 +19,7 @@ public class FileController {
 
 
     @GetMapping("/getFiles")
-    public Result<List<FilesVO>> getFiles() {
+    public Result<FileVOS> getFiles() {
         return fileService.getFiles();
     }
 
@@ -101,18 +99,28 @@ public class FileController {
     }
 
     @PostMapping("/addStarFile")
-    public Result<Void> addStarFile(StarFileDTO addStarFileDTO){
+    public Result<Void> addStarFile(@RequestBody StarFileDTO addStarFileDTO){
         return fileService.addStarFile(addStarFileDTO);
     }
 
     @PostMapping("/deleteStarredFile")
-    public Result<Void> deleteStarredFile(StarFileDTO deleteStarredFileDTO){
+    public Result<Void> deleteStarredFile(@RequestBody StarFileDTO deleteStarredFileDTO){
         return fileService.deleteStarredFile(deleteStarredFileDTO);
     }
 
     @PostMapping("/getStarredFiles")
     public Result<List<StarredFileVO>> getStarredFiles(){
         return fileService.getStarredFiles();
+    }
+
+    @PostMapping("/creatShareLink")
+    public Result<CreatShareLinkVO> creatShareLink(@RequestBody CreatShareLinkDTO creatShareLinkDTO){
+        return fileService.creatShareLink(creatShareLinkDTO);
+    }
+
+    @PostMapping("/addShareFileByShareLink")
+    public Result<SharedFileVO> addShareFileByShareLink(@RequestBody String link){
+        return fileService.addShareFileByShareLink(link);
     }
 
     public FileController(FileService fileService) {

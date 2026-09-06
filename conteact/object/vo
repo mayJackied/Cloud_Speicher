@@ -6,6 +6,12 @@ LoginVO loginVO { String token Integer user_id; String name; boolean isAdmin}
 
 CreatInviteCodeVO { String inviteCode }
 
-FilesVO { List <FilesVO> filesVOS; String file_name; Long length; Long last_modified; boolean is_file }
+FileVOS { List<FileListVO> fileListVOS; List<SharedFileVO> sharedFileVOS }
+
+FileListVO { List <FilesVO> filesVOS; String file_name; Long length; Long last_modified; boolean is_file }
+
+SharedFileVO { FileListVO fileListVO; Integer sharerId; String sharedFilePath }
 
 StarredFileVO { private String starFilePath }
+
+CreatShareLinkVO { String shareKey }

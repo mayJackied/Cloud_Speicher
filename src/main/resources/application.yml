@@ -35,6 +35,8 @@ my:
 
       uploadBufferSize: 5 #MB
 
+      defaultExpireDuration: 24 #Hours
+
     signKey: "reisen"
     expire: 30 #Days
     url: ${host}

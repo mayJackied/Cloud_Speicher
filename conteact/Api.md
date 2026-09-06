@@ -38,7 +38,7 @@ File {
 
 *get_files*
 get: /api/file/getFiles
-VO: Result<List<MyFile> filesVOS>
+VO: Result<FileVOS>
 
 *add_file*
 post: /api/file/addFile
@@ -115,4 +115,16 @@ VO: Result<Void>
 *get_starred_files*
 post: /api/file/getStarredFiles
 VO: Result<List<StarredFileVO>>
+
+*creat_share_link*
+post: /api/file/creatShareLink
+DTO: CreatShareLinkDTO creatShareLinkDTO
+VO: Result<CreatShareLinkVO>
+
+*add_share_file_by_share_link*
+post: /api/file/addShareFileByShareLink
+DTO: String link        Tipp: 分享链接
+VO: Result<SharedFileVO>
+
+
 }

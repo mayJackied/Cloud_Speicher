@@ -5,24 +5,17 @@ import com.zuantou.common.exception.BusinessException;
 import com.zuantou.common.properties.CommonProperties;
 import com.zuantou.common.properties.ErrorCode;
 import com.zuantou.common.utils.ZipUtil;
-import com.zuantou.mapper.file.ContinuableUploadMapper;
-import com.zuantou.mapper.file.DeleteBinFileSourceMapper;
-import com.zuantou.mapper.file.StarredFileMapper;
+import com.zuantou.mapper.file.*;
 import com.zuantou.mapper.user.UserMapper;
-import com.zuantou.pojo.ContinuableUpload;
-import com.zuantou.pojo.DeleteBinFileSource;
-import com.zuantou.pojo.StarredFile;
-import com.zuantou.pojo.User;
+import com.zuantou.pojo.*;
 import com.zuantou.common.utils.UserContext;
 import com.zuantou.common.properties.MyValFileProperties;
-import com.zuantou.pojo.vo.Result;
+import com.zuantou.pojo.vo.*;
 import com.zuantou.pojo.dto.file.*;
 import com.zuantou.pojo.dto.file.continueableDTO.CloseUploadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.ContinuableDownloadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.ContinuableUploadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.GetUploadedSizeDTO;
-import com.zuantou.pojo.vo.FilesVO;
-import com.zuantou.pojo.vo.StarredFileVO;
 import com.zuantou.service.FileService;
 import com.zuantou.common.utils.FileUtil;
 import jakarta.servlet.http.HttpServletResponse;
@@ -46,15 +39,30 @@ public class FileServiceImpl implements FileService {
     private final DeleteBinFileSourceMapper deleteBinFileSourceMapper;
     private final ContinuableUploadMapper continuableUploadMapper;
     private final StarredFileMapper starredFileMapper;
+    private final ShareFileLinkMapper shareFileLinkMapper;
+    private final SharedFileMapper sharedFileMapper;
 
     @Override
-    public Result<List<FilesVO>> getFiles() {
-        List<FilesVO> filesVOS = new ArrayList<>();
+    public Result<FileVOS> getFiles() {
+        List<FileListVO> fileListVOS = new ArrayList<>();
         List<String> list = Arrays.asList(fileProperties.getPublicPath(), fileProperties.getPath() + "/" + UserContext.getUserId().toString());
         for (String s : list) {
-            filesVOS.add(FileUtil.getFiles(s));
+            fileListVOS.add(FileUtil.getFiles(s));
         }
-        return Result.success(filesVOS);
+
+        List<SharedFile> sharedFiles = sharedFileMapper.selectList(new LambdaQueryWrapper<SharedFile>().eq(SharedFile::getShareeId, UserContext.getUserId()));
+        if (sharedFiles == null) {
+            return Result.success(new FileVOS(fileListVOS, null));
+        }
+        List<SharedFileVO> sharedFileVOS = new ArrayList<>();
+        for (SharedFile sharedFile : sharedFiles) {
+            if (sharedFile.isFile()) {
+                sharedFileVOS.add(new SharedFileVO(new FileListVO(null, sharedFile.getFileName(), sharedFile.getLength(), sharedFile.getLastModified(), true), sharedFile.getSharerId(), sharedFile.getSharedFilePath()));
+            } else {
+                sharedFileVOS.add(new SharedFileVO(FileUtil.getFiles(sharedFile.getSharedFilePath()), sharedFile.getSharerId(), sharedFile.getSharedFilePath()));
+            }
+        }
+        return Result.success(new FileVOS(fileListVOS, sharedFileVOS));
     }
 
     @Override
@@ -397,7 +405,7 @@ public class FileServiceImpl implements FileService {
 
     @Override
     public void continuableDownload(ContinuableDownloadDTO continuableDownloadDTO, HttpServletResponse response) {
-        Integer errorCode = checkFilePermission(continuableDownloadDTO.getDownloadFilePath(), SEARCH_OR_DOWNLOAD_OR_STAR, CommonProperties.COMMON_PATH_OPERATION);
+        Integer errorCode = checkFilePermission(continuableDownloadDTO.getDownloadFilePath(), IN_PUBLIC_PATH_OR_SHARED_FILE_ALLOWED_OPERATION, CommonProperties.COMMON_PATH_OPERATION);
 
         if (errorCode != null) {
             throw new BusinessException(errorCode);
@@ -446,7 +454,7 @@ public class FileServiceImpl implements FileService {
 
     @Override
     public Result<Void> addStarFile(StarFileDTO addStarFileDTO) {
-        Integer errorCode = checkFilePermission(addStarFileDTO.getStarFilePath(), SEARCH_OR_DOWNLOAD_OR_STAR, CommonProperties.COMMON_PATH_OPERATION);
+        Integer errorCode = checkFilePermission(addStarFileDTO.getStarFilePath(), IN_PUBLIC_PATH_OR_SHARED_FILE_ALLOWED_OPERATION, CommonProperties.COMMON_PATH_OPERATION);
         if (errorCode != null) {
             return Result.error(errorCode);
         }
@@ -464,7 +472,7 @@ public class FileServiceImpl implements FileService {
 
     @Override
     public Result<Void> deleteStarredFile(StarFileDTO deleteStarredFileDTO) {
-        Integer errorCode = checkFilePermission(deleteStarredFileDTO.getStarFilePath(), SEARCH_OR_DOWNLOAD_OR_STAR, CommonProperties.COMMON_PATH_OPERATION);
+        Integer errorCode = checkFilePermission(deleteStarredFileDTO.getStarFilePath(), IN_PUBLIC_PATH_OR_SHARED_FILE_ALLOWED_OPERATION, CommonProperties.COMMON_PATH_OPERATION);
         if (errorCode != null) {
             return Result.error(errorCode);
         }
@@ -479,11 +487,42 @@ public class FileServiceImpl implements FileService {
     @Override
     public Result<List<StarredFileVO>> getStarredFiles() {
         List<StarredFileVO> starredFileVOS = new ArrayList<>();
-        BeanUtils.copyProperties(starredFileMapper.selectStarredFilesByUserId(UserContext.getUserId()),starredFileVOS);
+        BeanUtils.copyProperties(starredFileMapper.selectStarredFilesByUserId(UserContext.getUserId()), starredFileVOS);
         return Result.success(starredFileVOS);
     }
 
-    // 分享, 收藏
+    @Override
+    public Result<CreatShareLinkVO> creatShareLink(CreatShareLinkDTO creatShareLinkDTO) {
+        Integer errorCode = checkFilePermission(creatShareLinkDTO.getShareFilePath(), IN_PUBLIC_PATH_OR_SHARED_FILE_ALLOWED_OPERATION, CommonProperties.COMMON_PATH_OPERATION);
+        if (errorCode != null) {
+            return Result.error(errorCode);
+        }
+        String shareLink = UUID.randomUUID().toString().replace("-", "");
+        shareFileLinkMapper.insert(new ShareFileLink(shareLink, UserContext.getUserId(), creatShareLinkDTO.getShareFilePath(), System.currentTimeMillis() + (creatShareLinkDTO.getExpireDuration() == 0 ? Math.round(creatShareLinkDTO.getExpireDuration() * 60 * 60 * 1000) : Math.round(fileProperties.getRetainTime() * 60 * 60 * 1000))));
+        return Result.success(new CreatShareLinkVO(shareLink));
+    }
+
+    @Override
+    public Result<SharedFileVO> addShareFileByShareLink(String link) {
+        ShareFileLink shareFileLink = shareFileLinkMapper.selectById(link);
+        if (shareFileLink == null || shareFileLink.getExpireTime() < System.currentTimeMillis()) {
+            return Result.error(ErrorCode.SHARE_LINK_INVALID);
+        }
+        SharedFile sf = sharedFileMapper.selectOne(new LambdaQueryWrapper<SharedFile>().eq(SharedFile::getSharedFilePath, shareFileLink.getShareFilePath()).eq(SharedFile::getShareeId, UserContext.getUserId()));
+        if (sf != null) {
+            return Result.error(ErrorCode.SHARE_LINK_USED);
+        }
+        File sharedFile = new File(shareFileLink.getShareFilePath());
+        sharedFileMapper.insert(new SharedFile(UserContext.getUserId(), shareFileLink.getSharerId(), shareFileLink.getShareFilePath(), link, sharedFile.getName(), sharedFile.length(), sharedFile.lastModified(), sharedFile.isFile()));
+
+        SharedFileVO sharedFileVO;
+        if (sharedFile.isFile()) {
+            sharedFileVO = new SharedFileVO(new FileListVO(null, sharedFile.getName(), sharedFile.length(), sharedFile.lastModified(), true), shareFileLink.getSharerId(), shareFileLink.getShareFilePath());
+        } else {
+            sharedFileVO =  new SharedFileVO(FileUtil.getFiles(shareFileLink.getShareFilePath()), shareFileLink.getSharerId(), shareFileLink.getShareFilePath());
+        }
+        return Result.success(sharedFileVO);
+    }
 
     /**
      * @param path          对象文件的路径
@@ -531,8 +570,15 @@ public class FileServiceImpl implements FileService {
         }
         boolean admin = user.isAdmin();
 
-        if (target.startsWith(userPath) || admin || (operationType == SEARCH_OR_DOWNLOAD_OR_STAR && !target.startsWith(userPath))) {
+        if (target.startsWith(userPath) || admin || (operationType == IN_PUBLIC_PATH_OR_SHARED_FILE_ALLOWED_OPERATION && !target.startsWith(userPath))) {
             return null;
+        }
+
+        if (operationType == IN_PUBLIC_PATH_OR_SHARED_FILE_ALLOWED_OPERATION) {
+            SharedFile sf = sharedFileMapper.selectOne(new LambdaQueryWrapper<SharedFile>().eq((SharedFile::getSharedFilePath), path).eq(SharedFile::getShareeId, UserContext.getUserId()));
+            if (sf != null) {
+                return null;
+            }
         }
         return ErrorCode.NO_PERMISSION;
     }
@@ -631,14 +677,16 @@ public class FileServiceImpl implements FileService {
         return newName.toString();
     }
 
-    private final int SEARCH_OR_DOWNLOAD_OR_STAR = 0;
+    private final int IN_PUBLIC_PATH_OR_SHARED_FILE_ALLOWED_OPERATION = 0;
     private final int OTHER = 1;
 
-    public FileServiceImpl(MyValFileProperties fileProperties, UserMapper userMapper, DeleteBinFileSourceMapper deleteBinFileSourceMapper, ContinuableUploadMapper continuableUploadMapper, StarredFileMapper starredFileMapper) {
+    public FileServiceImpl(MyValFileProperties fileProperties, UserMapper userMapper, DeleteBinFileSourceMapper deleteBinFileSourceMapper, ContinuableUploadMapper continuableUploadMapper, StarredFileMapper starredFileMapper, ShareFileLinkMapper shareFileMapper, SharedFileMapper sharedFileMapper) {
         this.fileProperties = fileProperties;
         this.userMapper = userMapper;
         this.deleteBinFileSourceMapper = deleteBinFileSourceMapper;
         this.continuableUploadMapper = continuableUploadMapper;
         this.starredFileMapper = starredFileMapper;
+        this.shareFileLinkMapper = shareFileMapper;
+        this.sharedFileMapper = sharedFileMapper;
     }
 }

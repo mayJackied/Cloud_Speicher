@@ -27,6 +27,8 @@ public final class ErrorCode {
     public static final Integer BIN_FILE_NOT_ALLOWED = 20007;
     public static final Integer UPLOAD_KEY_NOT_FOUND = 20008;
     public static final Integer FILE_STARRED = 20009;
+    public static final Integer SHARE_LINK_INVALID = 20010;
+    public static final Integer SHARE_LINK_USED = 20011;
 
     public static final Integer ARGS_ILLEGAL = 30001;
 }

@@ -29,3 +29,5 @@ ContinuableUploadDTO {String uploadKey; String targetPath; MultipartFile multipa
 GetUploadedSizeDTO { String uploadKey }
 
 StarFileDTO { private String starFilePath }
+
+CreatShareLinkDTO { String shareFilePath; Double expireDuration } Tipp: 单位为小时 如果为0的话就是默认24小时

@@ -29,6 +29,8 @@
 | 20007 | BIN_FILE_NOT_ALLOWED         | 不允许对回收站这样操作               |
 | 20008 | UPLOAD_KEY_NOT_FOUND         | 上传文件的KEY不存在               |
 | 20009 | FILE_STARRED                 | 文件已被收藏                    |
+| 20010 | SHARE_LINK_INVALID           | 无效的分享链接                   |
+| 20011 | SHARE_LINK_USED              | 链接已被使用                    |
 |       |                              |                           |
 | 30001 | ARGS_ILLEGAL                 | 传参有误                      |
 

@@ -1,19 +1,17 @@
 package com.zuantou.service;
 
-import com.zuantou.pojo.vo.Result;
+import com.zuantou.pojo.vo.*;
 import com.zuantou.pojo.dto.file.*;
 import com.zuantou.pojo.dto.file.continueableDTO.CloseUploadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.ContinuableDownloadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.ContinuableUploadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.GetUploadedSizeDTO;
-import com.zuantou.pojo.vo.FilesVO;
-import com.zuantou.pojo.vo.StarredFileVO;
 import jakarta.servlet.http.HttpServletResponse;
 
 import java.util.List;
 
 public interface FileService {
-    Result<List<FilesVO>> getFiles();
+    Result<FileVOS> getFiles();
 
     Result<Void> addFile(FileDTO fileDTO);
 
@@ -50,4 +48,8 @@ public interface FileService {
     Result<Void> deleteStarredFile(StarFileDTO deleteStarredFileDTO);
 
     Result<List<StarredFileVO>> getStarredFiles();
+
+    Result<CreatShareLinkVO> creatShareLink(CreatShareLinkDTO creatShareLinkDTO);
+
+    Result<SharedFileVO> addShareFileByShareLink(String link);
 }

@@ -1,15 +1,15 @@
 package com.zuantou.common.utils;
 
-import com.zuantou.pojo.vo.FilesVO;
+import com.zuantou.pojo.vo.FileListVO;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
 public class FileUtil {
-    public static FilesVO getFiles(String path){
+    public static FileListVO getFiles(String path){
         File file = new File(path);
-        List<FilesVO> list = new ArrayList<>();
+        List<FileListVO> list = new ArrayList<>();
 
         String[] strings = file.list();
 
@@ -20,10 +20,10 @@ public class FileUtil {
         }
 
         if (list.isEmpty()){
-            return new FilesVO(null, file.getName(),file.length(),file.lastModified(),file.isFile());
+            return new FileListVO(null, file.getName(),file.length(),file.lastModified(),file.isFile());
         }
 
-        return new FilesVO(list, file.getName(),file.length(),file.lastModified(),file.isFile());
+        return new FileListVO(list, file.getName(),file.length(),file.lastModified(),file.isFile());
     }
 
 }

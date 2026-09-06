@@ -10,8 +10,8 @@ import java.util.List;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class FilesVO {
-    private List <FilesVO> filesVOS;
+public class FileListVO {
+    private List <FileListVO> fileListVOS;
     private String fileName;
     private Long length;
     private Long lastModified;
