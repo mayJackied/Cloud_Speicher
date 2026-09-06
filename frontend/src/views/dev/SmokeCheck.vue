@@ -38,7 +38,7 @@ import { useApiMode } from '@/composables/useApiMode'
 import { isResultOk, isResultShape, readLoginVO, describeTransportError } from '@/dev/contract'
 import { useAuthStore } from '@/stores/auth'
 import { ErrorCode } from '@/types/errorCode'
-import { readFilesVOList, toServerPath, type FilesVO } from '@/types/file'
+import { readFileCatalogVO, toServerPath, type FilesVO } from '@/types/file'
 import { canDownloadInFolder, canWriteInFolder } from '@/utils/driveAccess'
 
 const router = useRouter()
@@ -108,7 +108,10 @@ async function runSmoke() {
     )
 
     const filesBody = loginVo ? (await getFiles()).data : null
-    const trees = filesBody && isResultOk(filesBody) ? readFilesVOList(filesBody.data) : null
+    const trees =
+      filesBody && isResultOk(filesBody)
+        ? (readFileCatalogVO(filesBody.data)?.fileListVOS ?? null)
+        : null
     const hasPublic = Boolean(trees?.some((node) => node.fileName === 'public'))
     const hasRoom = Boolean(loginVo && trees?.some((node) => node.fileName === String(loginVo.userId)))
     lines.push(hasPublic && hasRoom ? '通过 — getFiles 有公共目录和自己的房间' : '失败 — getFiles 列表')
@@ -135,7 +138,10 @@ async function runSmoke() {
       const { data: uploadBody } = await uploadFile(toServerPath([String(loginVo.userId)]), file)
       const uploadOk = isResultOk(uploadBody)
       const after = uploadOk ? (await getFiles()).data : null
-      const afterTrees = after && isResultOk(after) ? readFilesVOList(after.data) : null
+      const afterTrees =
+        after && isResultOk(after)
+          ? (readFileCatalogVO(after.data)?.fileListVOS ?? null)
+          : null
       const room = afterTrees?.find((node) => node.fileName === String(loginVo.userId))
       const listed = treeHasFile(room ? [room] : null, fileName)
       lines.push(uploadOk && listed ? '通过 — 上传后列表出现文件' : '失败 — 上传')

@@ -8,6 +8,18 @@ export interface FilesVO {
   isFile: boolean
 }
 
+/** 后端 `FileVOS`：普通根目录与别人分享给当前用户的文件分开返回。 */
+export interface FileCatalogVO {
+  fileListVOS: FilesVO[]
+  sharedFileVOS: SharedFileVO[]
+}
+
+export interface SharedFileVO {
+  fileListVO: FilesVO
+  sharerId: number
+  sharedFilePath: string
+}
+
 /** 对应 Java `FileDTO`（原 AddFileDTO）。JSON：`is_file` + `path` */
 export interface FileDTO {
   isFile: boolean
@@ -70,6 +82,16 @@ export interface StarFileDTO {
 
 export interface StarredFileVO {
   starFilePath: string
+}
+
+export interface CreatShareLinkDTO {
+  shareFilePath: string
+  /** 小时；0 表示使用后端默认保留时长。 */
+  expireDuration: number
+}
+
+export interface CreatShareLinkVO {
+  shareKey: string
 }
 
 /** JSON：path + 	argetDir（驼峰；空字符串 = 源文件父目录） */
@@ -144,9 +166,10 @@ export function readFilesVO(data: unknown): FilesVO | null {
   const lastModified =
     typeof row.lastModified === 'number' && Number.isFinite(row.lastModified) ? row.lastModified : 0
   let filesVOS: FilesVO[] | null = null
-  if (Array.isArray(row.filesVOS)) {
+  const rawChildren = row.fileListVOS ?? row.filesVOS
+  if (Array.isArray(rawChildren)) {
     filesVOS = []
-    for (const child of row.filesVOS) {
+    for (const child of rawChildren) {
       const vo = readFilesVO(child)
       if (!vo) {
         return null
@@ -170,6 +193,48 @@ export function readFilesVOList(data: unknown): FilesVO[] | null {
     list.push(vo)
   }
   return list
+}
+
+/**
+ * 解析 backend `075193e` 的 getFiles 返回值。
+ * 暂时兼容旧数组响应，便于前后端滚动部署。
+ */
+export function readFileCatalogVO(data: unknown): FileCatalogVO | null {
+  const legacyRoots = readFilesVOList(data)
+  if (legacyRoots) {
+    return { fileListVOS: legacyRoots, sharedFileVOS: [] }
+  }
+
+  const row = asRecord(data)
+  if (!row) {
+    return null
+  }
+  const fileListVOS = readFilesVOList(row.fileListVOS)
+  if (!fileListVOS) {
+    return null
+  }
+
+  const sharedFileVOS: SharedFileVO[] = []
+  const rawShared = row.sharedFileVOS
+  if (rawShared != null && !Array.isArray(rawShared)) {
+    return null
+  }
+  for (const value of rawShared ?? []) {
+    const shared = asRecord(value)
+    const fileListVO = readFilesVO(shared?.fileListVO)
+    const sharerId = shared?.sharerId
+    const sharedFilePath = shared?.sharedFilePath
+    if (
+      !fileListVO ||
+      typeof sharerId !== 'number' ||
+      !Number.isFinite(sharerId) ||
+      typeof sharedFilePath !== 'string'
+    ) {
+      return null
+    }
+    sharedFileVOS.push({ fileListVO, sharerId, sharedFilePath })
+  }
+  return { fileListVOS, sharedFileVOS }
 }
 
 export function childrenOf(node: FilesVO): FilesVO[] {

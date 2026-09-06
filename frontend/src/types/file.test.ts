@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { isLegalFileName, joinServerPath, readFilesVO, readFilesVOList, toServerPath, bytesOfNode } from './file'
+import {
+  bytesOfNode,
+  isLegalFileName,
+  joinServerPath,
+  readFileCatalogVO,
+  readFilesVO,
+  readFilesVOList,
+  toServerPath,
+} from './file'
 
 describe('FilesVO / path', () => {
   it('is_file 映射成 isFile，并保留子树', () => {
@@ -20,6 +28,39 @@ describe('FilesVO / path', () => {
       { fileName: '9', length: 0, lastModified: 0, is_file: false, filesVOS: null },
     ])
     expect(list?.map((node) => node.fileName)).toEqual(['public', '9'])
+  })
+
+  it('解析新版 getFiles 的普通树和共享文件', () => {
+    const catalog = readFileCatalogVO({
+      fileListVOS: [
+        {
+          fileName: 'public',
+          length: 0,
+          lastModified: 0,
+          is_file: false,
+          fileListVOS: null,
+        },
+      ],
+      sharedFileVOS: [
+        {
+          fileListVO: {
+            fileName: 'shared.txt',
+            length: 4,
+            lastModified: 1,
+            is_file: true,
+            fileListVOS: null,
+          },
+          sharerId: 7,
+          sharedFilePath: '../files/7/shared.txt',
+        },
+      ],
+    })
+    expect(catalog?.fileListVOS[0]?.fileName).toBe('public')
+    expect(catalog?.sharedFileVOS[0]).toMatchObject({
+      sharerId: 7,
+      sharedFilePath: '../files/7/shared.txt',
+      fileListVO: { fileName: 'shared.txt', isFile: true },
+    })
   })
 
   it('缺少 fileName 不算 FilesVO', () => {

@@ -46,13 +46,24 @@ function headers(token: string) {
 
 async function getTree(token: string) {
   const res = await fetch(`${base}/api/file/getFiles`, { headers: { token, Accept: 'application/json' } })
-  const body = (await res.json()) as { code: number; data: unknown[] }
+  const body = (await res.json()) as {
+    code: number
+    data: { fileListVOS?: unknown[] } | unknown[]
+  }
   expect(body.code).toBe(1)
-  return body.data as Array<{
+  const data = Array.isArray(body.data) ? body.data : (body.data.fileListVOS ?? [])
+  return data as Array<{
     fileName: string
     is_file?: boolean
     isFile?: boolean
     length?: number
+    fileListVOS?: Array<{
+      fileName: string
+      is_file?: boolean
+      isFile?: boolean
+      length?: number
+      fileListVOS?: unknown
+    }> | null
     filesVOS?: Array<{
       fileName: string
       is_file?: boolean
@@ -74,7 +85,12 @@ function roomOf(tree: Awaited<ReturnType<typeof getTree>>, userId: number) {
 }
 
 function kids(node: { filesVOS?: unknown } | undefined) {
-  return (node?.filesVOS as Array<{ fileName: string; length?: number; is_file?: boolean }> | null) ?? []
+  const row = node as { filesVOS?: unknown; fileListVOS?: unknown } | undefined
+  return (
+    (row?.fileListVOS as Array<{ fileName: string; length?: number; is_file?: boolean }> | null) ??
+    (row?.filesVOS as Array<{ fileName: string; length?: number; is_file?: boolean }> | null) ??
+    []
+  )
 }
 
 describe('trash → reupload → restore (mock)', () => {

@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { api } from './client'
-import { deleteFiles, unzipFile, zipFile } from './files'
+import {
+  addShareFileByShareLink,
+  creatShareLink,
+  deleteFiles,
+  unzipFile,
+  zipFile,
+} from './files'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -32,5 +38,22 @@ describe('删除与压缩请求', () => {
     void unzipFile(dto)
 
     expect(post).toHaveBeenCalledWith('/file/unzip', dto)
+  })
+
+  it('生成分享码沿用后端 creatShareLink 路径', () => {
+    const post = vi.spyOn(api, 'post').mockResolvedValue({} as never)
+    const dto = { shareFilePath: '../files/2/a.txt', expireDuration: 0 }
+
+    void creatShareLink(dto)
+
+    expect(post).toHaveBeenCalledWith('/file/creatShareLink', dto)
+  })
+
+  it('接收分享发送 JSON 字符串，而不是 link 对象', () => {
+    const post = vi.spyOn(api, 'post').mockResolvedValue({} as never)
+
+    void addShareFileByShareLink('share-key')
+
+    expect(post).toHaveBeenCalledWith('/file/addShareFileByShareLink', 'share-key')
   })
 })

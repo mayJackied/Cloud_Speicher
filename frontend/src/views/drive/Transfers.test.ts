@@ -45,4 +45,11 @@ describe('传输列表界面接入', () => {
     expect(transfersView).toContain('chooseSource(task.id)')
     expect(transfersView).toContain('chooseDestination(task.id, task.fileName)')
   })
+
+  it('共享频道已接生成和接收分享码', () => {
+    expect(sidebar).toContain("emit('openShared')")
+    expect(driveView).toContain('createShareKey')
+    expect(driveView).toContain('acceptShareKey')
+    expect(driveView).toContain('itemSourcePath')
+  })
 })

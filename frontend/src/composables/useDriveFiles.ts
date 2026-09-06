@@ -2,7 +2,9 @@ import { computed, ref } from 'vue'
 import { isAxiosError } from 'axios'
 import {
   addFile,
+  addShareFileByShareLink,
   addStarFile,
+  creatShareLink,
   deleteFile,
   deleteFiles,
   deleteStarredFile,
@@ -27,10 +29,11 @@ import {
   childrenOf,
   isLegalFileName,
   joinServerPath,
-  readFilesVOList,
+  readFileCatalogVO,
   toServerPath,
   bytesOfNode,
   type FilesVO,
+  type SharedFileVO,
 } from '@/types/file'
 import { canDownloadInFolder, canWriteInFolder } from '@/utils/driveAccess'
 import { uniqueExtractFolderName, isMacosxJunkName } from '@/utils/extractTarget'
@@ -85,6 +88,7 @@ async function resultFromBlob(data: Blob): Promise<{ code: number } | null> {
 
 /** 网盘树在页面间共享，避免 CloudDrive / Transfers 各持一份导致占用条闪跳。 */
 const roots = ref<FilesVO[]>([])
+const sharedFiles = ref<SharedFileVO[]>([])
 const crumbs = ref<string[]>([])
 const loading = ref(false)
 const busy = ref(false)
@@ -95,6 +99,7 @@ let trashMetaSyncQueue: Promise<void> = Promise.resolve()
 
 export function resetDriveFilesState() {
   roots.value = []
+  sharedFiles.value = []
   crumbs.value = []
   loading.value = false
   busy.value = false
@@ -177,12 +182,13 @@ export function useDriveFiles() {
         message.value = messageForCode(data.code)
         return
       }
-      const list = readFilesVOList(data.data)
-      if (!list) {
+      const catalog = readFileCatalogVO(data.data)
+      if (!catalog) {
         message.value = '文件列表形状不对'
         return
       }
-      roots.value = list
+      roots.value = catalog.fileListVOS
+      sharedFiles.value = catalog.sharedFileVOS
       trimCrumbs()
     } catch (error) {
       if (isAxiosError(error) && error.response && isResultShape(error.response.data)) {
@@ -237,8 +243,8 @@ export function useDriveFiles() {
     return parsed
   }
 
-  async function mutate(run: () => Promise<unknown>) {
-    if (!canWrite.value) {
+  async function mutate(run: () => Promise<unknown>, opts?: { requireWrite?: boolean }) {
+    if ((opts?.requireWrite ?? true) && !canWrite.value) {
       message.value = messageForCode(ErrorCode.NO_PERMISSION)
       return
     }
@@ -546,9 +552,10 @@ export function useDriveFiles() {
       }
       const listed = await getFiles()
       if (isResultShape(listed.data) && listed.data.code === ErrorCode.OK) {
-        const tree = readFilesVOList(listed.data.data)
-        if (tree) {
-          roots.value = tree
+        const catalog = readFileCatalogVO(listed.data.data)
+        if (catalog) {
+          roots.value = catalog.fileListVOS
+          sharedFiles.value = catalog.sharedFileVOS
         }
       }
     }
@@ -599,9 +606,10 @@ export function useDriveFiles() {
 
       const listed = await getFiles()
       if (isResultShape(listed.data) && listed.data.code === ErrorCode.OK) {
-        const tree = readFilesVOList(listed.data.data)
-        if (tree) {
-          roots.value = tree
+        const catalog = readFileCatalogVO(listed.data.data)
+        if (catalog) {
+          roots.value = catalog.fileListVOS
+          sharedFiles.value = catalog.sharedFileVOS
         }
       }
 
@@ -857,7 +865,7 @@ export function useDriveFiles() {
     crumbs.value = [...segments]
   }
 
-  async function blobForItem(node: FilesVO): Promise<Blob | null> {
+  async function blobForItem(node: FilesVO, explicitPath?: string): Promise<Blob | null> {
     if (!node.isFile) {
       return null
     }
@@ -866,7 +874,7 @@ export function useDriveFiles() {
       return null
     }
     const { data, headers } = await downloadFile({
-      downloadFilePath: itemPath(node.fileName),
+      downloadFilePath: explicitPath || itemPath(node.fileName),
       downloadType: 0,
       downloadedSize: 0,
     })
@@ -964,26 +972,53 @@ export function useDriveFiles() {
     })
   }
 
-  async function starItem(node: FilesVO) {
-    if (atRoot.value) {
+  async function starItem(node: FilesVO, explicitPath?: string) {
+    if (atRoot.value && !explicitPath) {
       return
     }
-    const path = itemPath(node.fileName)
+    const path = explicitPath || itemPath(node.fileName)
     await mutate(async () => {
       const { data } = await addStarFile({ starFilePath: path })
       return data
-    })
+    }, { requireWrite: false })
   }
 
   async function unstarPath(path: string) {
     await mutate(async () => {
       const { data } = await deleteStarredFile({ starFilePath: path })
       return data
-    })
+    }, { requireWrite: false })
+  }
+
+  async function createShareKey(path: string, expireDuration = 24): Promise<string | null> {
+    let key: string | null = null
+    await mutate(async () => {
+      const { data } = await creatShareLink({ shareFilePath: path, expireDuration })
+      if (isResultShape(data) && data.code === ErrorCode.OK) {
+        const shareKey = (data.data as { shareKey?: unknown } | null)?.shareKey
+        key = typeof shareKey === 'string' ? shareKey : null
+      }
+      return data
+    }, { requireWrite: false })
+    return key
+  }
+
+  async function acceptShareKey(link: string): Promise<boolean> {
+    const key = link.trim()
+    if (!key) {
+      return false
+    }
+    const before = sharedFiles.value.length
+    await mutate(async () => {
+      const { data } = await addShareFileByShareLink(key)
+      return data
+    }, { requireWrite: false })
+    return !message.value && sharedFiles.value.length > before
   }
 
   return {
     roots,
+    sharedFiles,
     crumbs,
     loading,
     busy,
@@ -1023,6 +1058,8 @@ export function useDriveFiles() {
     starredItemsFromPaths,
     starItem,
     unstarPath,
+    createShareKey,
+    acceptShareKey,
     findNodeByServerPath,
   }
 }

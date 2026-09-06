@@ -10,6 +10,7 @@
       @open-root="openRoot"
       @open-trash="openTrash"
       @open-starred="openStarred"
+      @open-shared="openShared"
       @note-offline="noteOffline"
       @logout="onLogout"
       @slot-over="onSlotOver"
@@ -80,8 +81,9 @@
         </div>
         <button type="button" :class="{ 'is-on': view === 'grid' }" @click="view = 'grid'">{{ t('drive.grid') }}</button>
         <button type="button" :class="{ 'is-on': view === 'list' }" @click="view = 'list'">{{ t('drive.list') }}</button>
-        <button v-if="canWrite && !atRoot && !inStarred" type="button" class="arc__cta" @click="openCreate">{{ t('drive.create') }}</button>
-        <button v-if="canWrite && !atRoot && !inStarred" type="button" class="arc__cta" @click="pickUpload">{{ t('drive.upload') }}</button>
+        <button v-if="canWrite && !atRoot && !inStarred && !inShared" type="button" class="arc__cta" @click="openCreate">{{ t('drive.create') }}</button>
+        <button v-if="canWrite && !atRoot && !inStarred && !inShared" type="button" class="arc__cta" @click="pickUpload">{{ t('drive.upload') }}</button>
+        <button v-if="inShared" type="button" class="arc__cta" @click="openAcceptShare">{{ t('drive.acceptShare') }}</button>
         <input ref="fileInput" class="arc__hidden" type="file" @change="onFileInput" />
       </div>
 
@@ -95,7 +97,7 @@
           :disabled="inTrash ? !canRestore : inStarred ? !canActMeta : !canActWrite"
           @click="inTrash ? selected && onRestore(selected) : inStarred ? onUnstarSelected() : confirmDelete()"
         >{{ inTrash ? t('drive.restore') : inStarred ? t('drive.unstar') : t('drive.delete') }}</button>
-        <button type="button" :disabled="!canActMeta" @click="noteOffline(t('drive.share'))">{{ t('drive.share') }}</button>
+        <button type="button" :disabled="!canActMeta || inTrash" @click="onShareSelected">{{ t('drive.share') }}</button>
         <button type="button" :disabled="!canActMeta || inStarred || inTrash" @click="onStarSelected">{{ t('drive.star') }}</button>
         <span v-if="selNote" class="arc__sel-note">{{ selNote }}</span>
       </p>
@@ -137,7 +139,7 @@
               @dropin="onDropIntoFolder(item)"
             />
             <button
-              v-if="canWrite && !atRoot"
+              v-if="canWrite && !atRoot && !inShared"
               type="button"
               class="arc__append"
               @click="pickUpload"
@@ -307,7 +309,7 @@ import FolderPicker from '@/components/drive/FolderPicker.vue'
 import Timeboard from '@/components/drive/Timeboard.vue'
 import ConcreteVoid from '@/components/drive/ConcreteVoid.vue'
 
-type Channel = 'mine' | 'public' | 'root' | 'trash' | 'starred'
+type Channel = 'mine' | 'public' | 'root' | 'trash' | 'starred' | 'shared'
 type SortKey = 'name' | 'type' | 'size' | 'time'
 type PickerWindow = Window & {
   showOpenFilePicker?: (options?: object) => Promise<FileSystemFileHandleLike[]>
@@ -317,7 +319,7 @@ type DialogState = {
   title: string
   field: boolean
   value: string
-  kind: 'create' | 'rename' | 'delete'
+  kind: 'create' | 'rename' | 'delete' | 'accept-share'
 }
 
 const { t, locale } = useI18n()
@@ -377,6 +379,7 @@ const prefs = usePrefsStore()
 
 const {
   roots,
+  sharedFiles,
   crumbs,
   loading,
   busy,
@@ -408,14 +411,28 @@ const {
   starredItemsFromPaths,
   starItem,
   unstarPath,
+  createShareKey,
+  acceptShareKey,
 } = useDriveFiles()
 
 type StarredRow = FilesVO & { starPath: string }
+type SharedRow = FilesVO & { sharedPath: string; sharerId: number }
 
 const starredRows = ref<StarredRow[]>([])
+const sharedRows = computed<SharedRow[]>(() =>
+  sharedFiles.value.map((row) => ({
+    ...row.fileListVO,
+    sharedPath: row.sharedFilePath,
+    sharerId: row.sharerId,
+  })),
+)
 
 const listingItems = computed(() =>
-  channel.value === 'starred' ? starredRows.value : currentItems.value,
+  channel.value === 'starred'
+    ? starredRows.value
+    : channel.value === 'shared'
+      ? sharedRows.value
+      : currentItems.value,
 )
 
 const roomRoot = computed(() => {
@@ -426,6 +443,7 @@ const roomRoot = computed(() => {
 })
 const inTrash = computed(() => isInTrash(crumbs.value, auth.user?.userId))
 const inStarred = computed(() => channel.value === 'starred')
+const inShared = computed(() => channel.value === 'shared')
 const selectedItems = computed(() =>
   listingItems.value.filter((item) => selectedNames.value.includes(item.fileName)),
 )
@@ -440,7 +458,9 @@ const sortLabel = computed(
   () => sortOptions.value.find((opt) => opt.value === sortKey.value)?.label ?? t('drive.sortName'),
 )
 const canActDownload = computed(
-  () => selectedItems.value.length === 1 && Boolean(selected.value?.isFile && canDownload.value),
+  () =>
+    selectedItems.value.length === 1 &&
+    Boolean(selected.value?.isFile && (canDownload.value || inShared.value)),
 )
 const canActWrite = computed(() =>
   Boolean(
@@ -448,6 +468,7 @@ const canActWrite = computed(() =>
       canWrite.value &&
       !atRoot.value &&
       !inStarred.value &&
+      !inShared.value &&
       !selectedIsProtectedBin.value,
   ),
 )
@@ -480,7 +501,9 @@ const selectedLabel = computed(() =>
     ? t('drive.selectedNone')
     : t('drive.selectedCount', { count: selectedItems.value.length }),
 )
-const canDragItems = computed(() => canWrite.value && !atRoot.value && !inStarred.value)
+const canDragItems = computed(
+  () => canWrite.value && !atRoot.value && !inStarred.value && !inShared.value,
+)
 const selNote = computed(
   () => message.value || offlineNote.value || (loading.value || busy.value ? t('drive.loading') : ''),
 )
@@ -488,6 +511,9 @@ const selNote = computed(
 const locationLabel = computed(() => {
   if (inStarred.value) {
     return t('drive.starred')
+  }
+  if (inShared.value) {
+    return t('drive.shared')
   }
   if (crumbs.value.length === 0) {
     return t('drive.root')
@@ -620,12 +646,52 @@ async function openStarred() {
   })
 }
 
+function openShared() {
+  channel.value = 'shared'
+  clearSelection()
+}
+
+function itemSourcePath(item: FilesVO): string {
+  return (
+    (item as StarredRow).starPath ||
+    (item as SharedRow).sharedPath ||
+    toServerPath([...crumbs.value, item.fileName])
+  )
+}
+
 async function onStarSelected() {
   const item = selectedItems.value[0] ?? selected.value
   if (!item || inStarred.value || inTrash.value) {
     return
   }
-  await starItem(item)
+  await starItem(item, itemSourcePath(item))
+}
+
+async function onShareSelected() {
+  const item = selectedItems.value[0] ?? selected.value
+  if (!item || inTrash.value) {
+    return
+  }
+  // 后端 075193e 对 expireDuration=0 的默认时长分支写反，会生成立即过期的码。
+  const key = await createShareKey(itemSourcePath(item), 24)
+  if (!key) {
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(key)
+    message.value = t('drive.shareCreatedCopied', { key })
+  } catch {
+    message.value = t('drive.shareCreated', { key })
+  }
+}
+
+function openAcceptShare() {
+  dialog.value = {
+    title: t('drive.acceptShareTitle'),
+    field: true,
+    value: '',
+    kind: 'accept-share',
+  }
 }
 
 async function onUnstarSelected() {
@@ -708,7 +774,7 @@ async function warmPreview(item: FilesVO) {
     return
   }
   try {
-    const blob = await blobForItem(item)
+    const blob = await blobForItem(item, itemSourcePath(item))
     if (!blob) {
       return
     }
@@ -792,10 +858,9 @@ async function queueDownload(item: FilesVO) {
       return
     }
   }
-  const starredPath = (item as StarredRow).starPath
   await transfers.enqueueDownload({
     fileName: itemLabel(item),
-    sourcePath: starredPath || toServerPath([...crumbs.value, item.fileName]),
+    sourcePath: itemSourcePath(item),
     totalBytes: bytesOfNode(item),
     saveLocation,
     saveStrategy,
@@ -1111,6 +1176,12 @@ async function submitDialog() {
           ? selectedCountMessage(items.length, [], t('drive.delete'), locale.value)
           : ''
     }
+  } else if (current.kind === 'accept-share') {
+    const accepted = await acceptShareKey(current.value)
+    if (accepted) {
+      message.value = t('drive.shareAccepted')
+      openShared()
+    }
   }
   dialog.value = null
 }
@@ -1153,6 +1224,8 @@ async function applyChannelQuery() {
     await openTrash()
   } else if (wanted === 'starred') {
     await openStarred()
+  } else if (wanted === 'shared') {
+    openShared()
   } else if (auth.user) {
     openMine()
   }

@@ -31,9 +31,11 @@
         :class="{ 'is-on': active === 'starred' }"
         @click="emit('openStarred')"
       >{{ t('drive.starred') }}</button>
-      <button type="button" class="is-off" @click="emit('noteOffline', t('drive.shared'))">
-        {{ t('drive.shared') }}
-      </button>
+      <button
+        type="button"
+        :class="{ 'is-on': active === 'shared' }"
+        @click="emit('openShared')"
+      >{{ t('drive.shared') }}</button>
       <router-link
         to="/drive/transfers"
         :class="{ 'is-on': active === 'transfers' }"
@@ -77,7 +79,14 @@ import { useTransferStore } from '@/stores/transfers'
 import { formatBytes } from '@/utils/formatFile'
 import { trashItemCount } from '@/utils/recycleBin'
 
-export type DriveSideChannel = 'mine' | 'public' | 'root' | 'trash' | 'transfers' | 'starred'
+export type DriveSideChannel =
+  | 'mine'
+  | 'public'
+  | 'root'
+  | 'trash'
+  | 'transfers'
+  | 'starred'
+  | 'shared'
 
 const props = withDefaults(
   defineProps<{
@@ -97,6 +106,7 @@ const emit = defineEmits<{
   openRoot: []
   openTrash: []
   openStarred: []
+  openShared: []
   noteOffline: [label: string]
   logout: []
   slotOver: [slot: string, event: DragEvent]

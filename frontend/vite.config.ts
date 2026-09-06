@@ -121,6 +121,8 @@ const roomRoots = new Map<string, MockNode>()
 const mockFileBytes = new Map<string, Uint8Array>()
 const mockUploads = new Map<string, { path: string; size: number }>()
 const mockStars = new Map<number, Set<string>>()
+const mockShareLinks = new Map<string, { path: string; sharerId: number }>()
+const mockShared = new Map<number, Array<{ path: string; sharerId: number; node: MockNode }>>()
 mockFileBytes.set(`${FILE_PREFIX}/public/photo/FLORA_SPECTRA.svg`, sampleSvgBytes)
 
 function userIdFromToken(token: string): number {
@@ -139,6 +141,16 @@ function roomRoot(userId: number): MockNode {
 
 function mockRoots(userId: number): MockNode[] {
   return [publicRoot, roomRoot(userId)]
+}
+
+function toBackendFileListVO(node: MockNode): Record<string, unknown> {
+  return {
+    fileName: node.fileName,
+    length: node.length,
+    lastModified: node.lastModified,
+    is_file: node.is_file,
+    fileListVOS: node.filesVOS?.map(toBackendFileListVO) ?? null,
+  }
 }
 
 function parseFilePath(path: string): string[] | null {
@@ -196,7 +208,12 @@ function fileWritable(path: string, token: string): number | null {
 }
 
 function fileReadable(path: string, token: string): number | null {
-  return inUserOrPublic(path, token) ? null : 20001
+  if (inUserOrPublic(path, token)) {
+    return null
+  }
+  const userId = userIdFromToken(token)
+  const shared = mockShared.get(userId) ?? []
+  return shared.some((row) => path === row.path || path.startsWith(`${row.path}/`)) ? null : 20001
 }
 
 function mockApiPlugin(): Plugin {
@@ -220,7 +237,17 @@ function mockApiPlugin(): Plugin {
           const userId = userIdFromToken(token)
 
           if (req.method === 'GET' && url === '/api/file/getFiles') {
-            sendJson(res, ok(mockRoots(userId).map(cloneNode)))
+            sendJson(
+              res,
+              ok({
+                fileListVOS: mockRoots(userId).map(cloneNode).map(toBackendFileListVO),
+                sharedFileVOS: (mockShared.get(userId) ?? []).map((row) => ({
+                  fileListVO: toBackendFileListVO(row.node),
+                  sharerId: row.sharerId,
+                  sharedFilePath: row.path,
+                })),
+              }),
+            )
             return
           }
 
@@ -358,7 +385,11 @@ function mockApiPlugin(): Plugin {
           void readBody(req).then((raw) => {
             let parsed: Record<string, unknown> = {}
             try {
-              parsed = JSON.parse(raw || '{}') as Record<string, unknown>
+              const body: unknown = JSON.parse(raw || '{}')
+              parsed =
+                typeof body === 'string'
+                  ? { link: body }
+                  : (body as Record<string, unknown>)
             } catch {
               sendJson(res, fail(99999), 400)
               return
@@ -408,6 +439,47 @@ function mockApiPlugin(): Plugin {
                 res,
                 ok([...set].map((starFilePath) => ({ starFilePath }))),
               )
+              return
+            }
+
+            if (url === '/api/file/creatShareLink') {
+              const sharePath = String(parsed.shareFilePath ?? '')
+              const denied = fileReadable(sharePath, token)
+              if (denied) {
+                sendJson(res, fail(denied))
+                return
+              }
+              const shareKey = `mock-share-${Date.now().toString(36)}`
+              mockShareLinks.set(shareKey, { path: sharePath, sharerId: userId })
+              sendJson(res, ok({ shareKey }))
+              return
+            }
+
+            if (url === '/api/file/addShareFileByShareLink') {
+              const shareKey = String(parsed.link ?? '')
+              const share = mockShareLinks.get(shareKey)
+              if (!share) {
+                sendJson(res, fail(20010))
+                return
+              }
+              const rows = mockShared.get(userId) ?? []
+              if (rows.some((row) => row.path === share.path)) {
+                sendJson(res, fail(20011))
+                return
+              }
+              const segments = parseFilePath(share.path)
+              const node = segments ? findMockNode(share.sharerId, segments) : null
+              if (!node) {
+                sendJson(res, fail(20004))
+                return
+              }
+              rows.push({ path: share.path, sharerId: share.sharerId, node: cloneNode(node) })
+              mockShared.set(userId, rows)
+              sendJson(res, ok({
+                fileListVO: toBackendFileListVO(node),
+                sharerId: share.sharerId,
+                sharedFilePath: share.path,
+              }))
               return
             }
 

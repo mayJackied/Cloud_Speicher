@@ -115,7 +115,8 @@ Java 是 GET（conteact 写成了 POST，以源码为准）。把当前 token �
 
 *get_files*　GET `/api/file/getFiles`  
 DTO: 无  
-VO: `List<FilesVO>`（当前实现会返回 public 根 + 当前用户根两棵树）
+VO: `FileVOS { fileListVOS, sharedFileVOS }`
+`fileListVOS` 是 public 根 + 当前用户根；`sharedFileVOS` 是别人分享给当前用户的条目。
 
 *add_file*　POST `/api/file/addFile`  
 DTO: `FileDTO` `{ is_file: boolean, path }`　JSON（Java 已把 AddFileDTO 改名为 FileDTO）  
@@ -173,6 +174,15 @@ DTO: 无
 VO: `List<StarredFileVO>`（`{ starFilePath }`）  
 前端侧栏「收藏」拉此列表展示。
 
+*creat_share_link*　POST `/api/file/creatShareLink`
+DTO: `CreatShareLinkDTO { shareFilePath, expireDuration }`（小时）
+VO: `CreatShareLinkVO { shareKey }`
+注意后端路径和类型名当前就是 `creat`。`075193e` 的 `expireDuration=0` 默认时长分支写反，会生成立即过期的码；前端暂发 `24`。
+
+*add_share_file_by_share_link*　POST `/api/file/addShareFileByShareLink`
+DTO: JSON 字符串分享码（不是 `{ link }`）
+VO: `SharedFileVO`；无效/过期 → `20010`，已使用 → `20011`。成功后该条目出现在下一次 `getFiles.sharedFileVOS`。
+
 *zip*　POST `/api/file/zip`  
 DTO: `ZipFileDTO` `{ path, targetDir }`（驼峰；`targetDir` 必须是文件夹，空字符串 = 源文件父目录）  
 VO: `Result<Void>`  
@@ -203,7 +213,7 @@ DTO: `{ path }`（回收站内项；后端用落盘路径查还原元数据）
 VO: `Void`  
 从回收站还原。前端当前仍有一套本机软删/还原逻辑，与后端回收站 API 可并存，联调时以现网为准。
 
-### 断点传输（现网已实现，对齐 backend `0d04466`）
+### 断点传输（现网已实现；复核 backend `075193e`）
 
 前端适配层：`frontend/src/api/files.ts` + `frontend/src/api/transfers.ts`；传输列表在线模式直接调这些接口，不再使用拟定的 `/file/transfer/...`。
 
@@ -211,7 +221,7 @@ VO: `Void`
 - 下载：`downloadFile` + `downloadType`/`downloadedSize`；传输列表用 `onDownloadProgress` 更新进度
 - 数据库只存 uploadKey 与临时路径；文件内容写磁盘
 
-错误码补充：`20007` 回收站禁止、`20008` 上传 KEY 不存在、`20009` 已收藏、`30001` 传参有误。
+错误码补充：`20007` 回收站禁止、`20008` 上传 KEY 不存在、`20009` 已收藏、`20010` 分享码无效、`20011` 分享码已使用、`30001` 传参有误。
 
 ---
 
@@ -224,11 +234,15 @@ CheckUserNameVO `{ boolean is_available }`
 
 CreatInviteCodeVO `{ String inviteCode }`
 
-FilesVO `{ List<FilesVO> filesVOS; String fileName; Long length; Long lastModified; boolean is_file }`
+FileVOS `{ List<FileListVO> fileListVOS; List<SharedFileVO> sharedFileVOS }`
+
+FileListVO `{ List<FileListVO> fileListVOS; String fileName; Long length; Long lastModified; boolean is_file }`
+
+SharedFileVO `{ FileListVO fileListVO; Integer sharerId; String sharedFilePath }`
 
 FileDTO `{ boolean is_file; String path }`（原 AddFileDTO）  
 path 示例（后端注释）：相对路径从最底层开始，如 `../files/public/document/a.txt`  
-`getFiles` 只回每层 `fileName`，不回完整 path。前端用前缀 `../files` + 面包屑拼接后再调增删改。
+普通树只回每层 `fileName`，不回完整 path；前端用前缀 `../files` + 面包屑拼接。共享条目直接使用 `sharedFilePath` 下载、收藏或再次分享。
 
 RenameFileDTO `{ String path; String new_name }`
 
@@ -253,7 +267,7 @@ PO User `{ userId, password, name, isDeleted, isAdmin }`（无 documentId）
 登录/注册/发码已按 **code + data + 错误码表** 接。`/drive` 已接列表与进文件夹；自己的房间可新建/重命名/删除/上传/下载/移动。  
 **Ctrl/Cmd 多选**；多选删除走 `deleteFiles`；移动暂仅单选。  
 右键接入 **zip / unzip**（解压默认同名文件夹，「解压到…」可选父目录；清 `__MACOSX`）。  
-侧栏**回收站**可进；最近 / 收藏 / 共享仍占位。公共目录普通用户只能下载，管理员可增删改。设置页删号。  
+侧栏**回收站 / 收藏 / 共享**可进；共享支持生成分享码及凭码接收。最近仍占位。公共目录普通用户只能下载，管理员可增删改。设置页删号。
 离线 mock 走本地；在线经 Vite 到 FRP。
 2026-08-30 现网探测：`checkUserName` / `register` / `login` / 非管理员发码 `10002` / `getFiles` 均 HTTP 200 且为 Result。JWT 30 天、无 refresh。
 
@@ -376,7 +390,8 @@ Java is GET (`conteact` wrote POST). Blacklists the current token; frontend clea
 
 *get_files*　GET `/api/file/getFiles`  
 DTO: none  
-VO: `List<FilesVO>` (implementation currently returns public root + current user root)
+VO: `FileVOS { fileListVOS, sharedFileVOS }`
+`fileListVOS` contains the public and current-user roots; `sharedFileVOS` contains files shared with the current user.
 
 *add_file*　POST `/api/file/addFile`  
 DTO: `FileDTO` `{ is_file: boolean, path }` JSON (Java renamed AddFileDTO → FileDTO)  
@@ -428,6 +443,15 @@ DTO: `{ starFilePath }` → `Void`
 *get_starred_files*　POST `/api/file/getStarredFiles`  
 VO: `List<StarredFileVO>` (`{ starFilePath }`)
 
+*creat_share_link*　POST `/api/file/creatShareLink`
+DTO: `CreatShareLinkDTO { shareFilePath, expireDuration }` (hours)
+VO: `CreatShareLinkVO { shareKey }`
+The backend currently spells the endpoint and types as `creat`. In `075193e`, `expireDuration=0` creates an immediately expired key due to a reversed default-duration branch; the frontend sends `24` for now.
+
+*add_share_file_by_share_link*　POST `/api/file/addShareFileByShareLink`
+DTO: a JSON string containing the share key (not `{ link }`)
+VO: `SharedFileVO`; invalid/expired → `20010`, already used → `20011`.
+
 *zip*　POST `/api/file/zip`  
 DTO: `ZipFileDTO` `{ path, targetDir }` (camelCase; `targetDir` must be a folder; empty string = parent of source)  
 VO: `Result<Void>`  
@@ -455,13 +479,13 @@ VO: `Void`
 DTO: `{ path }` (item in recycle bin)  
 VO: `Void`
 
-### Resumable transfer (live backend `0d04466`)
+### Resumable transfer (rechecked against backend `075193e`)
 
 Frontend adapters: `files.ts` + `transfers.ts`. Online transfer list calls these endpoints (not the old proposed `/file/transfer/...` draft).
 
 - Upload: `initUpload` → chunked `continuableUploadFile` (~5MB) → `getUploadedSize` on resume → `closeUpload`
 - Download: `downloadFile` with `downloadType` / `downloadedSize`
-- Extra error codes: `20007` bin forbidden, `20008` upload key missing, `20009` already starred, `30001` bad args
+- Extra error codes: `20007` bin forbidden, `20008` upload key missing, `20009` already starred, `20010` invalid share key, `20011` share key used, `30001` bad args
 
 ---
 
@@ -474,11 +498,15 @@ CheckUserNameVO `{ boolean is_available }`
 
 CreatInviteCodeVO `{ String inviteCode }`
 
-FilesVO `{ List<FilesVO> filesVOS; String fileName; Long length; Long lastModified; boolean is_file }`
+FileVOS `{ List<FileListVO> fileListVOS; List<SharedFileVO> sharedFileVOS }`
+
+FileListVO `{ List<FileListVO> fileListVOS; String fileName; Long length; Long lastModified; boolean is_file }`
+
+SharedFileVO `{ FileListVO fileListVO; Integer sharerId; String sharedFilePath }`
 
 FileDTO `{ boolean is_file; String path }` (was AddFileDTO)  
 Path note from backend: start from the leaf, e.g. `../files/public/document/a.txt`  
-`getFiles` returns `fileName` per node only. The frontend joins prefix `../files` + breadcrumb before add/delete/rename.
+Regular trees return `fileName` per node only, so the frontend joins `../files` + breadcrumbs. Shared entries use `sharedFilePath` directly for download, star, and re-share.
 
 RenameFileDTO `{ String path; String new_name }`
 
@@ -503,6 +531,6 @@ PO User `{ userId, password, name, isDeleted, isAdmin }` (no `documentId`)
 Login / register / invite codes use **code + data + error table**. `/drive` lists files; a user's room can mkdir / rename / delete / upload / download / move.  
 **Ctrl/Cmd multi-select**; batch delete via `deleteFiles`; move is single-select for now.  
 Context menu **zip / unzip** (same-named folder by default; Extract to… picks parent; scrub `__MACOSX`).  
-Sidebar **Trash** is usable; Recent / Starred / Shared remain placeholders. Public: everyone can download; only admin can write. Settings page deletes the account.  
+Sidebar **Trash / Starred / Shared** is usable. Sharing can create a key and accept a key; Recent remains a placeholder. Public: everyone can download; only admin can write. Settings page deletes the account.
 Offline mock locally; online via Vite → FRP.  
 2026-08-30 live probe: `checkUserName` / `register` / `login` / non-admin invite `10002` / `getFiles` all HTTP 200 Result. JWT is 30 days; no refresh.

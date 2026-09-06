@@ -3,11 +3,14 @@ import type {
   CloseUploadDTO,
   ContinuableDownloadDTO,
   ContinuableUploadDTO,
+  CreatShareLinkDTO,
+  CreatShareLinkVO,
   DeleteFileDTO,
   FileDTO,
-  FilesVO,
+  FileCatalogVO,
   MoveFileDTO,
   RenameFileDTO,
+  SharedFileVO,
   StarFileDTO,
   StarredFileVO,
   ZipFileDTO,
@@ -19,7 +22,7 @@ import { isResultShape } from '@/dev/contract'
 import { ErrorCode } from '@/types/errorCode'
 
 export function getFiles() {
-  return api.get<Result<FilesVO[]>>('/file/getFiles')
+  return api.get<Result<FileCatalogVO>>('/file/getFiles')
 }
 
 export function addFile(dto: FileDTO) {
@@ -130,4 +133,14 @@ export function deleteStarredFile(dto: StarFileDTO) {
 
 export function getStarredFiles() {
   return api.post<Result<StarredFileVO[]>>('/file/getStarredFiles')
+}
+
+/** 后端方法名暂为 `creatShareLink`（缺 e），这里必须按现网路径调用。 */
+export function creatShareLink(dto: CreatShareLinkDTO) {
+  return api.post<Result<CreatShareLinkVO>>('/file/creatShareLink', dto)
+}
+
+/** 请求体是 JSON 字符串，不是 `{ link }`。 */
+export function addShareFileByShareLink(link: string) {
+  return api.post<Result<SharedFileVO>>('/file/addShareFileByShareLink', link)
 }

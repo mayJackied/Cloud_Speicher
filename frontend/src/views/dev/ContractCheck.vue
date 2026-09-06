@@ -64,7 +64,7 @@ import {
   missingRegisterKeys,
   readLoginVO,
 } from '@/dev/contract'
-import { readFilesVOList } from '@/types/file'
+import { readFileCatalogVO } from '@/types/file'
 
 const auth = useAuthStore()
 const { mode, setMode } = useApiMode()
@@ -190,7 +190,9 @@ async function probeFiles() {
   probeText.value = '请求中…'
   try {
     const { data } = await getFiles()
-    const trees = isResultShape(data) && data.code === ErrorCode.OK ? readFilesVOList(data.data) : null
+    const catalog =
+      isResultShape(data) && data.code === ErrorCode.OK ? readFileCatalogVO(data.data) : null
+    const trees = catalog?.fileListVOS ?? null
     if (trees) {
       const names = trees.map((node) => node.fileName).join('、')
       probeText.value = `getFiles 通过：${trees.length} 棵树（${names}）`

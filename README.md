@@ -19,7 +19,7 @@ A private archival cloud drive. The repo is public as a showcase, not as a hoste
 - 右键：**压缩**、**解压**（同名文件夹）、**解压到…**（可选父目录）；解压后会清掉 `__MACOSX`
 - 侧栏新增**传输列表**：上传/下载统一入队；离线模拟进度，在线对接 `initUpload` / `continuableUploadFile` / `downloadFile`
 - 传输任务用 IndexedDB 持久化；Edge/Chrome 可保存文件句柄，刷新后缺少权限时明确要求重新选择
-- 侧栏**回收站**、**收藏**可进；最近 / 共享仍是占位
+- 侧栏**回收站**、**收藏**、**共享**可进；可生成分享码或凭码接收文件，最近仍是占位
 - 设置里有项目信息、语言、缩略图开关、删号
 
 ---
