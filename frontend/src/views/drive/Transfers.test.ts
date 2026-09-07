@@ -46,10 +46,28 @@ describe('传输列表界面接入', () => {
     expect(transfersView).toContain('chooseDestination(task.id, task.fileName)')
   })
 
+  it('传输卡片展示申请与完成时间戳', () => {
+    expect(transfersView).toContain("t('transfers.requestedAt')")
+    expect(transfersView).toContain("t('transfers.finishedAt')")
+    expect(transfersView).toContain('formatStampSecond(task.createdAt)')
+    expect(transfersView).toContain('formatStampSecond(task.completedAt)')
+  })
+
+  it('可在精简与详细显示模式间切换', () => {
+    expect(transfersView).toContain("prefs.setTransferView('compact')")
+    expect(transfersView).toContain("prefs.setTransferView('detail')")
+    expect(transfersView).toContain("t('transfers.viewCompact')")
+    expect(transfersView).toContain("t('transfers.viewDetail')")
+    expect(transfersView).toContain('transfer-compact')
+  })
+
   it('共享频道已接生成和接收分享码', () => {
     expect(sidebar).toContain("emit('openShared')")
     expect(driveView).toContain('createShareKey')
     expect(driveView).toContain('acceptShareKey')
     expect(driveView).toContain('itemSourcePath')
+    expect(driveView).toContain('openAcceptShare')
+    expect(driveView).toContain("kind: 'accept-share'")
+    expect(driveView).toContain("t('drive.acceptShareHint')")
   })
 })

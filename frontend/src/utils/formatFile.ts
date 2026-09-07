@@ -1,6 +1,9 @@
 export function formatBytes(n: number): string {
-  if (!n || n < 0) {
+  if (!Number.isFinite(n) || n < 0) {
     return '—'
+  }
+  if (n === 0) {
+    return '0 B'
   }
   if (n < 1024) {
     return `${n} B`
@@ -31,4 +34,22 @@ export function formatStamp(value: number): string {
   const h = String(d.getHours()).padStart(2, '0')
   const min = String(d.getMinutes()).padStart(2, '0')
   return `${y}.${m}.${day} ${h}:${min}`
+}
+
+/** 传输日志用：精确到秒。 */
+export function formatStampSecond(value: number | null | undefined): string {
+  if (!value) {
+    return '—'
+  }
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) {
+    return '—'
+  }
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const h = String(d.getHours()).padStart(2, '0')
+  const min = String(d.getMinutes()).padStart(2, '0')
+  const sec = String(d.getSeconds()).padStart(2, '0')
+  return `${y}.${m}.${day} ${h}:${min}:${sec}`
 }

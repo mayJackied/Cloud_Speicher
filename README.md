@@ -16,6 +16,7 @@ A private archival cloud drive. The repo is public as a showcase, not as a hoste
 - 图片蓝晒缩略图；GIF 与视频只抽一帧，网格里不播放
 - 界面中文 / English / Deutsch；文件名按 UTF-8 原样保存，默认支持中日韩
 - **Ctrl / Cmd 多选**；批量删除走 `deleteFiles`；移动暂仅单选
+- 文件可加入传输列表下载；文件夹会在浏览器端递归打包为 ZIP 下载，不污染服务器目录
 - 右键：**压缩**、**解压**（同名文件夹）、**解压到…**（可选父目录）；解压后会清掉 `__MACOSX`
 - 侧栏新增**传输列表**：上传/下载统一入队；离线模拟进度，在线对接 `initUpload` / `continuableUploadFile` / `downloadFile`
 - 传输任务用 IndexedDB 持久化；Edge/Chrome 可保存文件句柄，刷新后缺少权限时明确要求重新选择

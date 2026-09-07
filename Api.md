@@ -177,11 +177,13 @@ VO: `List<StarredFileVO>`（`{ starFilePath }`）
 *creat_share_link*　POST `/api/file/creatShareLink`
 DTO: `CreatShareLinkDTO { shareFilePath, expireDuration }`（小时）
 VO: `CreatShareLinkVO { shareKey }`
-注意后端路径和类型名当前就是 `creat`。`075193e` 的 `expireDuration=0` 默认时长分支写反，会生成立即过期的码；前端暂发 `24`。
+注意后端路径和类型名当前就是 `creat`。`075193e` 的 `expireDuration=0` 默认时长分支写反；前端暂发 `24`。本地 backend 已改按小时计算（0/空→`defaultExpireDuration`），待合入现网。
+**规划（领取稳定后）：** 同一用户同一路径若已有未过期码则返回原码且不刷新 `expireTime`；否则新建。
 
 *add_share_file_by_share_link*　POST `/api/file/addShareFileByShareLink`
-DTO: JSON 字符串分享码（不是 `{ link }`）
+DTO: JSON 字符串分享码（请求体是 `"key"`，不是 `{ link }`）
 VO: `SharedFileVO`；无效/过期 → `20010`，已使用 → `20011`。成功后该条目出现在下一次 `getFiles.sharedFileVOS`。
+领取仍偶发 `20010`（库有行却查不到或已过期被定时删）：见备忘录「当前阻塞」。
 
 *zip*　POST `/api/file/zip`  
 DTO: `ZipFileDTO` `{ path, targetDir }`（驼峰；`targetDir` 必须是文件夹，空字符串 = 源文件父目录）  
@@ -217,11 +219,13 @@ VO: `Void`
 
 前端适配层：`frontend/src/api/files.ts` + `frontend/src/api/transfers.ts`；传输列表在线模式直接调这些接口，不再使用拟定的 `/file/transfer/...`。
 
-- 上传：`initUpload` → 循环 `continuableUploadFile`（分块约 5MB）→ 中断后 `getUploadedSize` 取权威字节 → `closeUpload`
+- 上传：当前 FRP/Tomcat 链路约 5.5MB 会在 multipart 解析阶段 EOF，因此前端使用 4MB 完整 multipart 分片：`initUpload` → 循环 `continuableUploadFile`（首片 `uploadType=0`，后续 `1`）→ **仅中断恢复时** `getUploadedSize` → 全部分片完成后 `closeUpload`
 - 下载：`downloadFile` + `downloadType`/`downloadedSize`；传输列表用 `onDownloadProgress` 更新进度
 - 数据库只存 uploadKey 与临时路径；文件内容写磁盘
 
 错误码补充：`20007` 回收站禁止、`20008` 上传 KEY 不存在、`20009` 已收藏、`20010` 分享码无效、`20011` 分享码已使用、`30001` 传参有误。
+
+待闭环（见 `备忘录.md`「当前阻塞 / 下一步」）：大文件上传现网手测；分享码领取 `20010`；领取通后再做「同文件未过期码复用、不刷新过期时间」。
 
 ---
 
@@ -446,11 +450,13 @@ VO: `List<StarredFileVO>` (`{ starFilePath }`)
 *creat_share_link*　POST `/api/file/creatShareLink`
 DTO: `CreatShareLinkDTO { shareFilePath, expireDuration }` (hours)
 VO: `CreatShareLinkVO { shareKey }`
-The backend currently spells the endpoint and types as `creat`. In `075193e`, `expireDuration=0` creates an immediately expired key due to a reversed default-duration branch; the frontend sends `24` for now.
+The backend currently spells the endpoint and types as `creat`. In `075193e`, `expireDuration=0` creates an immediately expired key; the frontend sends `24` for now. Local backend patch computes hours from `expireDuration` (0/empty → `defaultExpireDuration`); deploy before relying on it.
+**Planned after redeem works:** if the same user already has a non-expired key for the same path, return that key without refreshing `expireTime`; otherwise create a new one.
 
 *add_share_file_by_share_link*　POST `/api/file/addShareFileByShareLink`
-DTO: a JSON string containing the share key (not `{ link }`)
+DTO: a JSON string containing the share key (body is `"key"`, not `{ link }`)
 VO: `SharedFileVO`; invalid/expired → `20010`, already used → `20011`.
+Redeem still intermittently returns `20010` even when a row was inserted — see `备忘录.md`.
 
 *zip*　POST `/api/file/zip`  
 DTO: `ZipFileDTO` `{ path, targetDir }` (camelCase; `targetDir` must be a folder; empty string = parent of source)  
@@ -483,9 +489,11 @@ VO: `Void`
 
 Frontend adapters: `files.ts` + `transfers.ts`. Online transfer list calls these endpoints (not the old proposed `/file/transfer/...` draft).
 
-- Upload: `initUpload` → chunked `continuableUploadFile` (~5MB) → `getUploadedSize` on resume → `closeUpload`
+- Upload: the current FRP/Tomcat link raises EOF while parsing multipart around 5.5MB, so the client sends complete 4MB multipart chunks: `initUpload` → repeated `continuableUploadFile` (first chunk type `0`, later chunks `1`) → `getUploadedSize` only for recovery → `closeUpload` after every chunk succeeds.
 - Download: `downloadFile` with `downloadType` / `downloadedSize`
 - Extra error codes: `20007` bin forbidden, `20008` upload key missing, `20009` already starred, `20010` invalid share key, `20011` share key used, `30001` bad args
+
+Still open (see `备忘录.md`): large-file upload live test; share-key redeem `20010`; after redeem works, reuse non-expired keys without refreshing expiry.
 
 ---
 

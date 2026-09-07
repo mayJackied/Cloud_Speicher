@@ -83,7 +83,7 @@
         <button type="button" :class="{ 'is-on': view === 'list' }" @click="view = 'list'">{{ t('drive.list') }}</button>
         <button v-if="canWrite && !atRoot && !inStarred && !inShared" type="button" class="arc__cta" @click="openCreate">{{ t('drive.create') }}</button>
         <button v-if="canWrite && !atRoot && !inStarred && !inShared" type="button" class="arc__cta" @click="pickUpload">{{ t('drive.upload') }}</button>
-        <button v-if="inShared" type="button" class="arc__cta" @click="openAcceptShare">{{ t('drive.acceptShare') }}</button>
+        <button type="button" class="arc__cta" @click="openAcceptShare">{{ t('drive.acceptShare') }}</button>
         <input ref="fileInput" class="arc__hidden" type="file" @change="onFileInput" />
       </div>
 
@@ -98,7 +98,12 @@
           @click="inTrash ? selected && onRestore(selected) : inStarred ? onUnstarSelected() : confirmDelete()"
         >{{ inTrash ? t('drive.restore') : inStarred ? t('drive.unstar') : t('drive.delete') }}</button>
         <button type="button" :disabled="!canActMeta || inTrash" @click="onShareSelected">{{ t('drive.share') }}</button>
-        <button type="button" :disabled="!canActMeta || inStarred || inTrash" @click="onStarSelected">{{ t('drive.star') }}</button>
+        <button
+          v-if="!inStarred"
+          type="button"
+          :disabled="!canActMeta || inTrash"
+          @click="selectedIsStarred ? onUnstarSelected() : onStarSelected()"
+        >{{ selectedIsStarred ? t('drive.unstar') : t('drive.star') }}</button>
         <span v-if="selNote" class="arc__sel-note">{{ selNote }}</span>
       </p>
 
@@ -206,6 +211,7 @@
               <div><dt>{{ t('drive.size') }}</dt><dd>{{ formatBytes(bytesOfNode(selected)) }}</dd></div>
               <div><dt>{{ t('drive.modified') }}</dt><dd>{{ formatStamp(selected.lastModified) }}</dd></div>
               <div><dt>{{ t('drive.location') }}</dt><dd>{{ locationLabel }}</dd></div>
+              <div><dt>{{ t('drive.starred') }}</dt><dd>{{ selectedIsStarred ? t('drive.starredYes') : t('drive.starredNo') }}</dd></div>
               <div><dt>{{ t('drive.sync') }}</dt><dd>{{ syncLabel }}</dd></div>
             </dl>
           </template>
@@ -217,7 +223,7 @@
 
     <div v-if="menu" class="arc__menu" :style="{ left: menu.x + 'px', top: menu.y + 'px' }" @mousedown.stop>
       <button type="button" @click="openItem(menu.item); menu = null">{{ t('drive.open') }}</button>
-      <button v-if="menu.item.isFile && canDownload" type="button" @click="queueDownload(menu.item); menu = null">
+      <button v-if="canDownloadItem(menu.item)" type="button" @click="queueDownload(menu.item); menu = null">
         {{ t('drive.download') }}
       </button>
       <button v-if="canWrite && !atRoot && selectedItems.length === 1 && !(menu && isProtectedBin(menu.item))" type="button" @click="openRename(); menu = null">{{ t('drive.rename') }}</button>
@@ -258,12 +264,20 @@
     </div>
 
     <div v-if="dialog" class="arc__modal" @click.self="dialog = null">
-      <form class="arc__dialog" @submit.prevent="submitDialog">
+      <form class="arc__dialog" :class="{ 'is-share': dialog.kind === 'accept-share' }" @submit.prevent="submitDialog">
         <p>{{ dialog.title }}</p>
-        <input v-if="dialog.field" v-model="dialog.value" class="arc__search" />
+        <p v-if="dialog.hint" class="arc__dialog-hint">{{ dialog.hint }}</p>
+        <input
+          v-if="dialog.field"
+          v-model="dialog.value"
+          class="arc__search"
+          :placeholder="dialog.placeholder || ''"
+          spellcheck="false"
+          autocomplete="off"
+        />
         <p v-else>{{ t('drive.confirmOp') }}</p>
         <div class="arc__actions">
-          <button type="submit">{{ t('drive.commit') }}</button>
+          <button type="submit">{{ dialog.kind === 'accept-share' ? t('drive.acceptShareCommit') : t('drive.commit') }}</button>
           <button type="button" @click="dialog = null">{{ t('drive.abort') }}</button>
         </div>
       </form>
@@ -286,6 +300,7 @@ import type { FileSystemFileHandleLike } from '@/types/transfer'
 import { ErrorCode, messageForCode } from '@/types/errorCode'
 import { kindOf, needsPosterFrame, typeLabel } from '@/utils/fileKind'
 import { formatBytes, formatStamp } from '@/utils/formatFile'
+import { remapStarredPaths } from '@/utils/starredCache'
 import { stillFromBlob } from '@/utils/posterFrame'
 import { archivalDisplayName, decodeFileName } from '@/utils/text'
 import { canWriteInFolder } from '@/utils/driveAccess'
@@ -295,6 +310,11 @@ import {
   isSameFolder,
 } from '@/utils/moveDest'
 import { selectedCountMessage, updateSelection } from '@/utils/selection'
+import {
+  createZipArchive,
+  mapWithConcurrency,
+  type ZipArchiveEntry,
+} from '@/utils/zipArchive'
 import {
   findRecycleBin,
   isInTrash,
@@ -320,6 +340,8 @@ type DialogState = {
   field: boolean
   value: string
   kind: 'create' | 'rename' | 'delete' | 'accept-share'
+  hint?: string
+  placeholder?: string
 }
 
 const { t, locale } = useI18n()
@@ -369,6 +391,7 @@ const exposing = ref(false)
 const dragNode = ref<FilesVO | null>(null)
 const dropSlot = ref('')
 const offlineNote = ref('')
+const folderDownloading = ref(false)
 const channel = ref<Channel>('root')
 const previews = reactive<Record<string, string>>({})
 const menu = ref<{ x: number; y: number; item: FilesVO } | null>(null)
@@ -419,6 +442,8 @@ type StarredRow = FilesVO & { starPath: string }
 type SharedRow = FilesVO & { sharedPath: string; sharerId: number }
 
 const starredRows = ref<StarredRow[]>([])
+const starredPaths = ref<string[]>([])
+
 const sharedRows = computed<SharedRow[]>(() =>
   sharedFiles.value.map((row) => ({
     ...row.fileListVO,
@@ -444,6 +469,33 @@ const roomRoot = computed(() => {
 const inTrash = computed(() => isInTrash(crumbs.value, auth.user?.userId))
 const inStarred = computed(() => channel.value === 'starred')
 const inShared = computed(() => channel.value === 'shared')
+function normalizeServerPath(path: string): string {
+  return path.replace(/\\/g, '/')
+}
+function isStarredPath(path: string): boolean {
+  const normalized = normalizeServerPath(path)
+  return starredPaths.value.some((row) => normalizeServerPath(row) === normalized)
+}
+function canDownloadItem(item: FilesVO): boolean {
+  if (canDownload.value || inShared.value || inStarred.value) {
+    return true
+  }
+  return Boolean(
+    atRoot.value &&
+      (item.fileName === 'public' ||
+        (auth.user && item.fileName === String(auth.user.userId))),
+  )
+}
+const selectedIsStarred = computed(() => {
+  const item = selected.value
+  if (!item) {
+    return false
+  }
+  if (inStarred.value) {
+    return true
+  }
+  return isStarredPath(itemSourcePath(item))
+})
 const selectedItems = computed(() =>
   listingItems.value.filter((item) => selectedNames.value.includes(item.fileName)),
 )
@@ -460,7 +512,7 @@ const sortLabel = computed(
 const canActDownload = computed(
   () =>
     selectedItems.value.length === 1 &&
-    Boolean(selected.value?.isFile && (canDownload.value || inShared.value)),
+    Boolean(selected.value && canDownloadItem(selected.value) && !folderDownloading.value),
 )
 const canActWrite = computed(() =>
   Boolean(
@@ -636,10 +688,27 @@ function openRoot() {
   syncChannel()
 }
 
+async function refreshStarredCache() {
+  const paths = await loadStarredPaths()
+  starredPaths.value = paths
+  return paths
+}
+
+function applyStarredRename(oldPath: string, newPath: string) {
+  starredPaths.value = remapStarredPaths(starredPaths.value, oldPath, newPath)
+  if (!inStarred.value) {
+    return
+  }
+  starredRows.value = starredPaths.value.map((path) => {
+    const [item] = starredItemsFromPaths([path])
+    return { ...(item as FilesVO), starPath: path }
+  })
+}
+
 async function openStarred() {
   channel.value = 'starred'
   clearSelection()
-  const paths = await loadStarredPaths()
+  const paths = await refreshStarredCache()
   starredRows.value = paths.map((path) => {
     const [item] = starredItemsFromPaths([path])
     return { ...(item as FilesVO), starPath: path }
@@ -661,10 +730,14 @@ function itemSourcePath(item: FilesVO): string {
 
 async function onStarSelected() {
   const item = selectedItems.value[0] ?? selected.value
-  if (!item || inStarred.value || inTrash.value) {
+  if (!item || inTrash.value || selectedIsStarred.value) {
     return
   }
-  await starItem(item, itemSourcePath(item))
+  const path = itemSourcePath(item)
+  const starred = await starItem(item, path)
+  if (starred) {
+    starredPaths.value = [...starredPaths.value, path]
+  }
 }
 
 async function onShareSelected() {
@@ -691,22 +764,31 @@ function openAcceptShare() {
     field: true,
     value: '',
     kind: 'accept-share',
+    hint: t('drive.acceptShareHint'),
+    placeholder: t('drive.acceptSharePlaceholder'),
   }
 }
 
 async function onUnstarSelected() {
   const item = selectedItems.value[0] ?? selected.value
-  if (!item || !inStarred.value) {
+  if (!item || !selectedIsStarred.value) {
     return
   }
-  const path = (item as StarredRow).starPath
+  const path =
+    (item as StarredRow).starPath ||
+    starredPaths.value.find((row) => normalizeServerPath(row) === normalizeServerPath(itemSourcePath(item))) ||
+    itemSourcePath(item)
   if (!path) {
     return
   }
-  await unstarPath(path)
-  if (!message.value) {
-    starredRows.value = starredRows.value.filter((row) => row.starPath !== path)
-    clearSelection()
+  const removed = await unstarPath(path)
+  if (removed) {
+    const normalized = normalizeServerPath(path)
+    starredPaths.value = starredPaths.value.filter((row) => normalizeServerPath(row) !== normalized)
+    if (inStarred.value) {
+      starredRows.value = starredRows.value.filter((row) => row.starPath !== path)
+      clearSelection()
+    }
   }
 }
 
@@ -845,6 +927,10 @@ async function queueUpload(file: File, handle?: FileSystemFileHandleLike) {
 }
 
 async function queueDownload(item: FilesVO) {
+  if (!item.isFile) {
+    await downloadFolder(item)
+    return
+  }
   const picker = (window as PickerWindow).showSaveFilePicker
   let handle: FileSystemFileHandleLike | undefined
   let saveLocation = t('transfers.defaultDownloads')
@@ -867,6 +953,103 @@ async function queueDownload(item: FilesVO) {
     destinationHandle: handle,
   })
   message.value = t('transfers.queuedNotice')
+}
+
+async function downloadFolder(item: FilesVO) {
+  if (folderDownloading.value) {
+    return
+  }
+  folderDownloading.value = true
+  message.value = ''
+
+  try {
+    const folderName = itemLabel(item).replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_') || 'folder'
+    const fileName = `${folderName}.zip`
+    const picker = (window as PickerWindow).showSaveFilePicker
+    let handle: FileSystemFileHandleLike | undefined
+    if (picker) {
+      handle = await picker({
+        suggestedName: fileName,
+        types: [{ description: 'ZIP archive', accept: { 'application/zip': ['.zip'] } }],
+      })
+    }
+
+    type FolderFile = {
+      node: FilesVO
+      sourcePath: string
+      archivePath: string
+    }
+    const directories: ZipArchiveEntry[] = []
+    const files: FolderFile[] = []
+
+    function plan(node: FilesVO, sourcePath: string, archivePath: string): void {
+      if (node.isFile) {
+        files.push({ node, sourcePath, archivePath })
+        return
+      }
+      directories.push({
+        name: `${archivePath.replace(/\/+$/, '')}/`,
+        data: new Uint8Array(),
+        modifiedAt: node.lastModified,
+      })
+      for (const child of node.filesVOS ?? []) {
+        plan(
+          child,
+          `${sourcePath.replace(/\/+$/, '')}/${child.fileName}`,
+          `${archivePath.replace(/\/+$/, '')}/${child.fileName}`,
+        )
+      }
+    }
+
+    plan(item, itemSourcePath(item), folderName)
+    let completed = 0
+    const downloaded = await mapWithConcurrency(files, 4, async (file) => {
+      const blob = await blobForItem(file.node, file.sourcePath)
+      if (!blob) {
+        throw new Error('FOLDER_FILE_DOWNLOAD_FAILED')
+      }
+      completed += 1
+      message.value = t('drive.folderDownloadProgress', {
+        done: completed,
+        total: files.length,
+      })
+      return {
+        name: file.archivePath,
+        data: new Uint8Array(await blob.arrayBuffer()),
+        modifiedAt: file.node.lastModified,
+      }
+    })
+
+    const archive = createZipArchive([...directories, ...downloaded])
+    if (handle) {
+      const writable = await handle.createWritable?.()
+      if (!writable) {
+        throw new Error('FILE_WRITER_UNAVAILABLE')
+      }
+      await writable.write(archive)
+      await writable.close()
+    } else {
+      const url = URL.createObjectURL(archive)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = fileName
+      link.click()
+      URL.revokeObjectURL(url)
+    }
+    message.value = t('drive.folderDownloadDone', { name: fileName })
+  } catch (error) {
+    if (
+      typeof DOMException !== 'undefined' &&
+      error instanceof DOMException &&
+      error.name === 'AbortError'
+    ) {
+      message.value = ''
+      return
+    }
+    message.value = t('drive.folderDownloadFailed')
+  } finally {
+    folderDownloading.value = false
+  }
 }
 
 function canDropInto(item: FilesVO): boolean {
@@ -1165,7 +1348,10 @@ async function submitDialog() {
   if (current.kind === 'create') {
     await createFolder(current.value)
   } else if (current.kind === 'rename' && item) {
-    await renameItem(item, current.value)
+    const renamed = await renameItem(item, current.value)
+    if (renamed) {
+      applyStarredRename(renamed.oldPath, renamed.newPath)
+    }
   } else if (current.kind === 'delete') {
     const items = [...selectedItems.value]
     await trashItems(items)
@@ -1236,7 +1422,9 @@ async function applyChannelQuery() {
 
 onMounted(() => {
   void transfers.hydrate()
-  void load().then(() => applyChannelQuery())
+  void load()
+    .then(() => refreshStarredCache())
+    .then(() => applyChannelQuery())
   window.addEventListener('mousedown', closeMenu)
   window.addEventListener('keydown', onKey)
 })
@@ -1765,6 +1953,18 @@ onUnmounted(() => {
   padding: 1rem;
   border: 1px solid var(--arc-line);
   background: #081923;
+}
+
+.arc__dialog-hint {
+  margin: 0.45rem 0 0.75rem;
+  color: rgb(235 244 246 / 55%);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  line-height: 1.55;
+}
+
+.arc__dialog.is-share {
+  width: min(32rem, 92vw);
 }
 
 .arc__actions {

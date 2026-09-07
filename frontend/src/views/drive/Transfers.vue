@@ -19,9 +19,23 @@
             <p>{{ t('transfers.kicker') }}</p>
             <h1>{{ t('transfers.title') }}</h1>
           </div>
-          <button type="button" @click="transfers.clearCompleted">
-            {{ t('transfers.clearCompleted') }}
-          </button>
+          <div class="transfer-head__actions">
+            <div class="transfer-view" role="group" :aria-label="t('transfers.viewMode')">
+              <button
+                type="button"
+                :class="{ 'is-on': prefs.transferView === 'compact' }"
+                @click="prefs.setTransferView('compact')"
+              >{{ t('transfers.viewCompact') }}</button>
+              <button
+                type="button"
+                :class="{ 'is-on': prefs.transferView === 'detail' }"
+                @click="prefs.setTransferView('detail')"
+              >{{ t('transfers.viewDetail') }}</button>
+            </div>
+            <button type="button" @click="transfers.clearCompleted">
+              {{ t('transfers.clearCompleted') }}
+            </button>
+          </div>
         </header>
 
         <div class="transfer-filters" role="tablist">
@@ -38,91 +52,119 @@
           {{ offlineNote || (apiMode === 'offline' ? t('transfers.mockHint') : t('transfers.backendHint')) }}
         </p>
 
-        <section class="transfer-list" aria-live="polite">
+        <section
+          class="transfer-list"
+          :class="{ 'is-compact': prefs.transferView === 'compact' }"
+          aria-live="polite"
+        >
           <p v-if="!filtered.length" class="transfer-empty">{{ t('transfers.empty') }}</p>
-          <article v-for="task in filtered" :key="task.id" class="transfer-card">
-            <div class="transfer-card__top">
-              <div class="transfer-name">
+          <article
+            v-for="task in filtered"
+            :key="task.id"
+            class="transfer-card"
+            :class="{ 'is-compact': prefs.transferView === 'compact' }"
+          >
+            <template v-if="prefs.transferView === 'compact'">
+              <div class="transfer-compact">
                 <span class="transfer-direction">
                   {{ task.direction === 'upload' ? '↑' : '↓' }}
                 </span>
-                <div>
-                  <h2>{{ task.fileName }}</h2>
-                  <p>{{ statusLabel(task.status) }}</p>
+                <h2>{{ task.fileName }}</h2>
+                <strong>{{ transferProgress(task) }}%</strong>
+              </div>
+            </template>
+            <template v-else>
+              <div class="transfer-card__top">
+                <div class="transfer-name">
+                  <span class="transfer-direction">
+                    {{ task.direction === 'upload' ? '↑' : '↓' }}
+                  </span>
+                  <div>
+                    <h2>{{ task.fileName }}</h2>
+                    <p>{{ statusLabel(task.status) }}</p>
+                  </div>
                 </div>
+                <strong>{{ transferProgress(task) }}%</strong>
               </div>
-              <strong>{{ transferProgress(task) }}%</strong>
-            </div>
 
-            <div class="transfer-progress">
-              <i :style="{ width: `${transferProgress(task)}%` }" />
-            </div>
-
-            <div class="transfer-meta">
-              <span>{{ formatBytes(task.transferredBytes) }} / {{ formatBytes(task.totalBytes) }}</span>
-              <span>{{ task.speedBps > 0 ? `${formatBytes(task.speedBps)}/s` : '—' }}</span>
-              <span v-if="task.remainingSeconds != null && task.status === 'running'">
-                {{ t('transfers.remaining', { time: formatDuration(task.remainingSeconds) }) }}
-              </span>
-            </div>
-
-            <dl>
-              <div>
-                <dt>{{ t('transfers.source') }}</dt>
-                <dd>{{ task.sourcePath }}</dd>
+              <div class="transfer-progress">
+                <i :style="{ width: `${transferProgress(task)}%` }" />
               </div>
-              <div>
-                <dt>{{ t('transfers.destination') }}</dt>
-                <dd>{{ task.saveLocation }}</dd>
+
+              <div class="transfer-meta">
+                <span>{{ formatBytes(task.transferredBytes) }} / {{ formatBytes(task.totalBytes) }}</span>
+                <span>{{ task.speedBps > 0 ? `${formatBytes(task.speedBps)}/s` : '—' }}</span>
+                <span v-if="task.remainingSeconds != null && task.status === 'running'">
+                  {{ t('transfers.remaining', { time: formatDuration(task.remainingSeconds) }) }}
+                </span>
               </div>
-            </dl>
 
-            <p v-if="task.errorMessage" class="transfer-error">
-              {{ task.errorMessage === 'SOURCE_FILE_MISMATCH' ? t('transfers.sourceMismatch') : task.errorMessage }}
-            </p>
+              <dl>
+                <div>
+                  <dt>{{ t('transfers.source') }}</dt>
+                  <dd>{{ task.sourcePath }}</dd>
+                </div>
+                <div>
+                  <dt>{{ t('transfers.destination') }}</dt>
+                  <dd>{{ task.saveLocation }}</dd>
+                </div>
+                <div>
+                  <dt>{{ t('transfers.requestedAt') }}</dt>
+                  <dd>{{ formatStampSecond(task.createdAt) }}</dd>
+                </div>
+                <div>
+                  <dt>{{ t('transfers.finishedAt') }}</dt>
+                  <dd>{{ formatStampSecond(task.completedAt) }}</dd>
+                </div>
+              </dl>
 
-            <div class="transfer-actions">
-              <button
-                v-if="['running', 'queued', 'waiting_backend'].includes(task.status)"
-                type="button"
-                @click="transfers.pause(task.id)"
-              >{{ t('transfers.pause') }}</button>
-              <button
-                v-if="task.status === 'paused'"
-                type="button"
-                @click="transfers.resume(task.id)"
-              >{{ t('transfers.resume') }}</button>
-              <button
-                v-if="task.status === 'needs_source'"
-                type="button"
-                @click="chooseSource(task.id)"
-              >{{ t('transfers.chooseSource') }}</button>
-              <button
-                v-if="task.status === 'needs_destination'"
-                type="button"
-                @click="chooseDestination(task.id, task.fileName)"
-              >{{ t('transfers.chooseDestination') }}</button>
-              <button
-                v-if="task.status === 'needs_destination'"
-                type="button"
-                @click="transfers.useBrowserDestination(task.id, t('transfers.defaultDownloads'))"
-              >{{ t('transfers.browserDestination') }}</button>
-              <button
-                v-if="['failed', 'canceled'].includes(task.status)"
-                type="button"
-                @click="transfers.retry(task.id)"
-              >{{ t('transfers.retry') }}</button>
-              <button
-                v-if="!['completed', 'canceled'].includes(task.status)"
-                type="button"
-                @click="transfers.cancel(task.id)"
-              >{{ t('transfers.cancel') }}</button>
-              <button
-                v-if="['completed', 'canceled'].includes(task.status)"
-                type="button"
-                @click="transfers.remove(task.id)"
-              >{{ t('transfers.remove') }}</button>
-            </div>
+              <p v-if="task.errorMessage" class="transfer-error">
+                {{ task.errorMessage === 'SOURCE_FILE_MISMATCH' ? t('transfers.sourceMismatch') : task.errorMessage }}
+              </p>
+
+              <div class="transfer-actions">
+                <button
+                  v-if="['running', 'queued', 'waiting_backend'].includes(task.status)"
+                  type="button"
+                  @click="transfers.pause(task.id)"
+                >{{ t('transfers.pause') }}</button>
+                <button
+                  v-if="task.status === 'paused'"
+                  type="button"
+                  @click="transfers.resume(task.id)"
+                >{{ t('transfers.resume') }}</button>
+                <button
+                  v-if="task.status === 'needs_source'"
+                  type="button"
+                  @click="chooseSource(task.id)"
+                >{{ t('transfers.chooseSource') }}</button>
+                <button
+                  v-if="task.status === 'needs_destination'"
+                  type="button"
+                  @click="chooseDestination(task.id, task.fileName)"
+                >{{ t('transfers.chooseDestination') }}</button>
+                <button
+                  v-if="task.status === 'needs_destination'"
+                  type="button"
+                  @click="transfers.useBrowserDestination(task.id, t('transfers.defaultDownloads'))"
+                >{{ t('transfers.browserDestination') }}</button>
+                <button
+                  v-if="['failed', 'canceled'].includes(task.status)"
+                  type="button"
+                  @click="transfers.retry(task.id)"
+                >{{ t('transfers.retry') }}</button>
+                <button
+                  v-if="!['completed', 'canceled'].includes(task.status)"
+                  type="button"
+                  @click="transfers.cancel(task.id)"
+                >{{ t('transfers.cancel') }}</button>
+                <button
+                  v-if="['completed', 'canceled'].includes(task.status)"
+                  type="button"
+                  @click="transfers.remove(task.id)"
+                >{{ t('transfers.remove') }}</button>
+              </div>
+            </template>
           </article>
         </section>
         <input ref="fallbackInput" class="transfer-hidden" type="file" @change="onFallbackSource" />
@@ -141,9 +183,10 @@ import { readApiMode } from '@/api/client'
 import { useDriveFiles } from '@/composables/useDriveFiles'
 import { useI18n } from '@/composables/useI18n'
 import { useAuthStore } from '@/stores/auth'
+import { usePrefsStore } from '@/stores/prefs'
 import { transferProgress, useTransferStore } from '@/stores/transfers'
 import type { FileSystemFileHandleLike, TransferFilter, TransferStatus } from '@/types/transfer'
-import { formatBytes } from '@/utils/formatFile'
+import { formatBytes, formatStampSecond } from '@/utils/formatFile'
 
 type PickerWindow = Window & {
   showOpenFilePicker?: (options?: object) => Promise<FileSystemFileHandleLike[]>
@@ -153,6 +196,7 @@ type PickerWindow = Window & {
 const { t } = useI18n()
 const router = useRouter()
 const auth = useAuthStore()
+const prefs = usePrefsStore()
 const transfers = useTransferStore()
 const { load } = useDriveFiles()
 const filter = ref<TransferFilter>('all')
@@ -305,6 +349,7 @@ onMounted(() => {
 }
 
 .transfer-filters .is-on,
+.transfer-view .is-on,
 .transfer-actions button:hover {
   color: var(--arc-lime);
 }
@@ -320,8 +365,22 @@ onMounted(() => {
   display: flex;
   align-items: end;
   justify-content: space-between;
+  gap: 1rem;
   padding-bottom: 1rem;
   border-bottom: 1px solid var(--arc-line);
+}
+
+.transfer-head__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.25rem;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.transfer-view {
+  display: flex;
+  gap: 0.85rem;
 }
 
 .transfer-head p,
@@ -370,6 +429,37 @@ onMounted(() => {
   padding: 1rem;
   border: 1px solid var(--arc-line);
   background: rgb(5 17 21 / 52%);
+}
+
+.transfer-card.is-compact {
+  padding: 0.55rem 0.75rem;
+}
+
+.transfer-compact {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.transfer-compact h2 {
+  overflow: hidden;
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transfer-compact strong {
+  color: var(--arc-lime);
+  font-family: var(--arc-display);
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+}
+
+.transfer-list.is-compact {
+  gap: 0.4rem;
 }
 
 .transfer-card__top,

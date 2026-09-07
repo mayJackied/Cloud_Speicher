@@ -39,6 +39,13 @@ import { canDownloadInFolder, canWriteInFolder } from '@/utils/driveAccess'
 import { uniqueExtractFolderName, isMacosxJunkName } from '@/utils/extractTarget'
 import { availableCopyName, decodeFileName } from '@/utils/text'
 import {
+  addStarredCache,
+  readStarredCache,
+  remapStarredCache,
+  removeStarredCache,
+  writeStarredCache,
+} from '@/utils/starredCache'
+import {
   RECYCLE_BIN_NAME,
   findRecycleBin,
   isInTrash,
@@ -303,23 +310,26 @@ export function useDriveFiles() {
     }
   }
 
-  async function renameItem(node: FilesVO, explicitName?: string) {
+  async function renameItem(
+    node: FilesVO,
+    explicitName?: string,
+  ): Promise<{ oldPath: string; newPath: string } | null> {
     if (typeof explicitName === 'string') {
       nameDraft.value = explicitName
     }
     if (atRoot.value || !canWrite.value) {
-      return
+      return null
     }
     if (isProtectedRecycleBin(crumbs.value, node, auth.user?.userId)) {
       message.value = '不能重命名回收站'
-      return
+      return null
     }
     const name = requireName('新名称')
     if (!name) {
-      return
+      return null
     }
     if (name === node.fileName) {
-      return
+      return null
     }
     if (
       isRecycleBinName(name) &&
@@ -328,15 +338,24 @@ export function useDriveFiles() {
       crumbs.value[0] === String(auth.user.userId)
     ) {
       message.value = '不能重命名为回收站'
-      return
+      return null
     }
+    const oldPath = itemPath(node.fileName)
+    const newPath = itemPath(name)
     await mutate(async () => {
-      const { data } = await renameFile({ path: itemPath(node.fileName), newName: name })
+      const { data } = await renameFile({ path: oldPath, newName: name })
       return data
     })
-    if (!message.value) {
-      nameDraft.value = ''
+    if (message.value) {
+      return null
     }
+    nameDraft.value = ''
+    // 后端同学约定：rename 成功后前端自行改收藏路径，少一次 getStarredFiles。
+    // 库表仍需后端同步；这里只保证当前会话 UI / 本地缓存立刻正确。
+    if (auth.user) {
+      remapStarredCache(auth.user.userId, oldPath, newPath)
+    }
+    return { oldPath, newPath }
   }
 
   async function removeItem(node: FilesVO) {
@@ -869,7 +888,7 @@ export function useDriveFiles() {
     if (!node.isFile) {
       return null
     }
-    if (!canDownload.value) {
+    if (!canDownload.value && !explicitPath) {
       message.value = messageForCode(ErrorCode.NO_PERMISSION)
       return null
     }
@@ -941,18 +960,33 @@ export function useDriveFiles() {
   }
 
   async function loadStarredPaths(): Promise<string[]> {
+    const userId = auth.user?.userId
+    const local = userId == null ? [] : readStarredCache(userId)
     try {
       const { data } = await getStarredFiles()
       if (!isResultShape(data) || data.code !== ErrorCode.OK || !Array.isArray(data.data)) {
         message.value = isResultShape(data) ? messageForCode(data.code) : '无法加载收藏'
-        return []
+        return local
       }
-      return data.data
+      const remote = data.data
         .map((row) => String((row as { starFilePath?: string }).starFilePath ?? '').trim())
         .filter(Boolean)
+      const merged = [...new Set([...remote, ...local])]
+      // 树已加载时：丢掉「仅远端残留、树里已不存在」的失效路径（典型是 rename 后后端未改库）。
+      // 本地仍记着的路径会保留，便于共享收藏等树外条目。
+      const next =
+        roots.value.length === 0
+          ? merged
+          : merged.filter((path) => {
+              if (findNodeByServerPath(path)) {
+                return true
+              }
+              return local.some((row) => row.replace(/\\/g, '/') === path.replace(/\\/g, '/'))
+            })
+      return userId == null ? next : writeStarredCache(userId, next)
     } catch {
       message.value = '无法连接服务器'
-      return []
+      return local
     }
   }
 
@@ -972,22 +1006,38 @@ export function useDriveFiles() {
     })
   }
 
-  async function starItem(node: FilesVO, explicitPath?: string) {
+  async function starItem(node: FilesVO, explicitPath?: string): Promise<boolean> {
     if (atRoot.value && !explicitPath) {
-      return
+      return false
     }
     const path = explicitPath || itemPath(node.fileName)
+    let starred = false
     await mutate(async () => {
       const { data } = await addStarFile({ starFilePath: path })
+      if (isResultShape(data) && data.code === ErrorCode.FILE_STARRED) {
+        starred = true
+        return { code: ErrorCode.OK, data: null }
+      }
+      starred = isResultShape(data) && data.code === ErrorCode.OK
       return data
     }, { requireWrite: false })
+    if (starred && auth.user) {
+      addStarredCache(auth.user.userId, path)
+    }
+    return starred
   }
 
-  async function unstarPath(path: string) {
+  async function unstarPath(path: string): Promise<boolean> {
+    let removed = false
     await mutate(async () => {
       const { data } = await deleteStarredFile({ starFilePath: path })
+      removed = isResultShape(data) && data.code === ErrorCode.OK
       return data
     }, { requireWrite: false })
+    if (removed && auth.user) {
+      removeStarredCache(auth.user.userId, path)
+    }
+    return removed
   }
 
   async function createShareKey(path: string, expireDuration = 24): Promise<string | null> {
@@ -1003,8 +1053,19 @@ export function useDriveFiles() {
     return key
   }
 
+  function normalizeShareKey(raw: string): string {
+    return raw
+      .trim()
+      .replace(/^["'`]+|["'`]+$/g, '')
+      .replace(
+        /^(分享码已复制[：:]\s*|分享码[：:]\s*|Share key copied:\s*|Share key:\s*|Freigabeschlüssel(?:\s+kopiert)?:\s*)/i,
+        '',
+      )
+      .trim()
+  }
+
   async function acceptShareKey(link: string): Promise<boolean> {
-    const key = link.trim()
+    const key = normalizeShareKey(link)
     if (!key) {
       return false
     }

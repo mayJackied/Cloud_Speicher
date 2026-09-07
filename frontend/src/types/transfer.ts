@@ -33,8 +33,11 @@ export interface TransferTask {
   etag?: string
   errorCode?: number
   errorMessage?: string
+  /** 申请加入传输队列的时间戳（ms）。 */
   createdAt: number
   updatedAt: number
+  /** 执行结束时间戳（ms）：完成 / 失败 / 取消。未结束则为 undefined。 */
+  completedAt?: number
 }
 
 export interface FileSystemFileHandleLike {

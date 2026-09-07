@@ -13,7 +13,7 @@ const transferApi = vi.hoisted(() => ({
   pushUploadChunk: vi.fn(),
   finishUpload: vi.fn(),
   downloadContinuableWithProgress: vi.fn(),
-  UPLOAD_CHUNK_SIZE: 5 * 1024 * 1024,
+  UPLOAD_CHUNK_SIZE: 4 * 1024 * 1024,
 }))
 
 vi.mock('@/api/transfers', () => transferApi)
@@ -86,7 +86,12 @@ describe('断点传输状态', () => {
       removeItem: vi.fn(),
     })
     transferApi.allocateUploadKey.mockResolvedValue({ ok: true, uploadKey: 'up-1' })
-    transferApi.pushUploadChunk.mockResolvedValue({ ok: true, nextOffset: 7 })
+    transferApi.pushUploadChunk.mockImplementation(
+      async ({ file, offset }: { file: File; offset: number }) => ({
+        ok: true,
+        nextOffset: Math.min(file.size, offset + 4),
+      }),
+    )
     transferApi.finishUpload.mockResolvedValue({ data: { code: 1, data: null } })
 
     const store = useTransferStore()
@@ -95,10 +100,20 @@ describe('断点传输状态', () => {
     await Promise.resolve()
 
     expect(transferApi.allocateUploadKey).toHaveBeenCalled()
-    expect(transferApi.pushUploadChunk).toHaveBeenCalled()
+    expect(transferApi.pushUploadChunk).toHaveBeenCalledTimes(2)
+    expect(transferApi.pushUploadChunk.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({ offset: 0, uploadType: 0 }),
+    )
+    expect(transferApi.pushUploadChunk.mock.calls[1]?.[0]).toEqual(
+      expect.objectContaining({ offset: 4, uploadType: 1 }),
+    )
+    // 正常上传不查 getUploadedSize；仅暂停/中断后续传才 probe。
+    expect(transferApi.probeUploadedSize).not.toHaveBeenCalled()
     expect(transferApi.finishUpload).toHaveBeenCalledWith('up-1')
     expect(store.tasks[0]?.status).toBe('completed')
     expect(store.tasks[0]?.serverTransferId).toBe('up-1')
+    expect(store.tasks[0]?.completedAt).toEqual(expect.any(Number))
+    expect(store.tasks[0]?.createdAt).toEqual(expect.any(Number))
   })
 
   it('离线执行器支持暂停、继续和完成', async () => {
@@ -113,6 +128,7 @@ describe('断点传输状态', () => {
       '../files/1',
     )
     expect(store.tasks[0]?.status).toBe('running')
+    expect(store.tasks[0]?.completedAt).toBeUndefined()
 
     await vi.advanceTimersByTimeAsync(130)
     expect(store.tasks[0]?.transferredBytes).toBeGreaterThan(0)
@@ -125,6 +141,7 @@ describe('断点传输状态', () => {
     await vi.runAllTimersAsync()
     expect(store.tasks[0]?.status).toBe('completed')
     expect(store.tasks[0]?.transferredBytes).toBe(10 * 1024 * 1024)
+    expect(store.tasks[0]?.completedAt).toEqual(expect.any(Number))
   })
 
   it('取消任务后停止进度', async () => {
@@ -139,5 +156,6 @@ describe('断点传输状态', () => {
     await vi.runAllTimersAsync()
     expect(store.tasks[0]?.status).toBe('canceled')
     expect(store.tasks[0]?.transferredBytes).toBe(0)
+    expect(store.tasks[0]?.completedAt).toEqual(expect.any(Number))
   })
 })

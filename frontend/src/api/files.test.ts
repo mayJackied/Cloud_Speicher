@@ -49,11 +49,11 @@ describe('删除与压缩请求', () => {
     expect(post).toHaveBeenCalledWith('/file/creatShareLink', dto)
   })
 
-  it('接收分享发送 JSON 字符串，而不是 link 对象', () => {
+  it('接收分享发送 JSON 字符串字面量，而不是 link 对象或裸 key', () => {
     const post = vi.spyOn(api, 'post').mockResolvedValue({} as never)
 
     void addShareFileByShareLink('share-key')
 
-    expect(post).toHaveBeenCalledWith('/file/addShareFileByShareLink', 'share-key')
+    expect(post).toHaveBeenCalledWith('/file/addShareFileByShareLink', '"share-key"')
   })
 })

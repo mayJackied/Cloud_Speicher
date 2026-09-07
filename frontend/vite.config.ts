@@ -456,7 +456,11 @@ function mockApiPlugin(): Plugin {
             }
 
             if (url === '/api/file/addShareFileByShareLink') {
-              const shareKey = String(parsed.link ?? '')
+              // 现网 body 是 JSON 字符串分享码；兼容旧 `{ link }`。
+              const shareKey =
+                typeof parsed === 'string'
+                  ? parsed.trim()
+                  : String((parsed as { link?: unknown } | null)?.link ?? '').trim()
               const share = mockShareLinks.get(shareKey)
               if (!share) {
                 sendJson(res, fail(20010))

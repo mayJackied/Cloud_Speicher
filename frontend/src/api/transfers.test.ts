@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from './client'
-import { downloadContinuableWithProgress, UPLOAD_CHUNK_SIZE } from './transfers'
+import {
+  UPLOAD_CHUNK_SIZE,
+  downloadContinuableWithProgress,
+  pushUploadChunk,
+} from './transfers'
 import { closeUpload, downloadFile, getStarredFiles, initUpload } from './files'
 
 afterEach(() => {
@@ -21,8 +25,39 @@ describe('现网断点传输与星标适配层', () => {
     expect(get).toHaveBeenCalledWith('/file/initUpload')
   })
 
-  it('分块大小与后端 buffer 对齐为 5MB', () => {
-    expect(UPLOAD_CHUNK_SIZE).toBe(5 * 1024 * 1024)
+  it('continuableUpload 使用低于 EOF 阈值的完整 multipart 分片', async () => {
+    const post = vi.spyOn(api, 'post').mockResolvedValue({ data: { code: 1, data: null } } as never)
+    const file = new File([new Uint8Array(UPLOAD_CHUNK_SIZE + 3)], 'large.bin')
+
+    const result = await pushUploadChunk({
+      uploadKey: 'k1',
+      targetPath: '../files/1',
+      file,
+      offset: 0,
+      uploadType: 0,
+    })
+
+    const body = post.mock.calls[0]?.[1] as FormData
+    expect(UPLOAD_CHUNK_SIZE).toBe(4 * 1024 * 1024)
+    expect((body.get('multipartFile') as Blob).size).toBe(UPLOAD_CHUNK_SIZE)
+    expect(result).toEqual({ ok: true, nextOffset: UPLOAD_CHUNK_SIZE })
+  })
+
+  it('continuableUpload 不用固定超时截断大文件', async () => {
+    const { continuableUploadFile } = await import('./files')
+    const post = vi.spyOn(api, 'post').mockResolvedValue({ data: { code: 1, data: null } } as never)
+    await continuableUploadFile({
+      uploadKey: 'k1',
+      targetPath: '../files/1',
+      file: new Blob(['x']),
+      fileName: 'a.bin',
+      uploadType: 0,
+    })
+    expect(post).toHaveBeenCalledWith(
+      '/file/continuableUploadFile',
+      expect.any(FormData),
+      expect.objectContaining({ timeout: 0 }),
+    )
   })
 
   it('下载使用 ContinuableDownloadDTO', () => {

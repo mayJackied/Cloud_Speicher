@@ -141,9 +141,11 @@ export async function postForm<T>(
   }
   headers['X-Api-Mode'] = readApiMode()
 
+  // 0 = 不限时（大文件分块上传）；默认 60s，避免元数据类表单挂死整页。
   const timeoutMs = opts?.timeoutMs ?? 60000
   const ctrl = new AbortController()
-  const timer = window.setTimeout(() => ctrl.abort(), timeoutMs)
+  const timer =
+    timeoutMs > 0 ? window.setTimeout(() => ctrl.abort(), timeoutMs) : 0
 
   try {
     const response = await fetch(resolveApiUrl(path, params), {
@@ -162,6 +164,8 @@ export async function postForm<T>(
     noteLinkFailure(error)
     throw error
   } finally {
-    window.clearTimeout(timer)
+    if (timer) {
+      window.clearTimeout(timer)
+    }
   }
 }

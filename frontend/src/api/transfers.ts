@@ -10,8 +10,11 @@ import { ErrorCode } from '@/types/errorCode'
 import { DownloadType } from '@/types/file'
 import type { AxiosProgressEvent } from 'axios'
 
-/** 与后端 `uploadBufferSize`（5MB）对齐的分块大小。 */
-export const UPLOAD_CHUNK_SIZE = 5 * 1024 * 1024
+/**
+ * 当前 FRP/Tomcat 链路在约 5.5MB 的 multipart 请求处会 EOF。
+ * 每个请求只携带 4MB 文件数据，确保 multipart 能完整解析并进入控制器。
+ */
+export const UPLOAD_CHUNK_SIZE = 4 * 1024 * 1024
 
 export async function allocateUploadKey() {
   const init = await initUpload()
@@ -36,17 +39,29 @@ export async function pushUploadChunk(options: {
   offset: number
   uploadType: 0 | 1
   chunkSize?: number
+  signal?: AbortSignal
+  onProgress?: (loadedInChunk: number, chunkBytes: number) => void
 }) {
   const chunkSize = options.chunkSize ?? UPLOAD_CHUNK_SIZE
   const end = Math.min(options.file.size, options.offset + chunkSize)
+  const chunkBytes = end - options.offset
   const chunk = options.file.slice(options.offset, end)
-  const uploaded = await continuableUploadFile({
-    uploadKey: options.uploadKey,
-    targetPath: options.targetPath,
-    file: chunk,
-    fileName: options.file.name,
-    uploadType: options.uploadType,
-  })
+  const uploaded = await continuableUploadFile(
+    {
+      uploadKey: options.uploadKey,
+      targetPath: options.targetPath,
+      file: chunk,
+      fileName: options.file.name,
+      uploadType: options.uploadType,
+    },
+    {
+      signal: options.signal,
+      onProgress: (event) => {
+        const loaded = Math.min(chunkBytes, Math.max(0, event.loaded))
+        options.onProgress?.(loaded, chunkBytes)
+      },
+    },
+  )
   if (!isResultShape(uploaded.data) || uploaded.data.code !== ErrorCode.OK) {
     return { ok: false as const, result: uploaded.data, nextOffset: options.offset }
   }
