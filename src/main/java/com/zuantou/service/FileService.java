@@ -6,6 +6,7 @@ import com.zuantou.pojo.dto.file.continueableDTO.CloseUploadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.ContinuableDownloadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.ContinuableUploadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.GetUploadedSizeDTO;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 import java.util.List;
@@ -33,13 +34,15 @@ public interface FileService {
 
     Result<Void> restoreFile(DeleteFileDTO deleteFileDTO);
 
-    Result<String> initUpload();
+    Result<String> initUpload(String uploadFilePath);
 
-    Result<Void> continuableUpload(ContinuableUploadDTO continuableUploadDTO);
+    Result<Void> continuableUpload(ContinuableUploadDTO continuableUploadDTO, HttpServletRequest request);
 
     Result<Long> getUploadedSize(GetUploadedSizeDTO getUploadedSizeDTO);
 
     Result<Void> closeUpload(CloseUploadDTO closeUploadDTO);
+
+    Result<Long> getDownloadFileSize(String path);
 
     void continuableDownload(ContinuableDownloadDTO continuableDownloadDTO, HttpServletResponse response);
 
@@ -52,4 +55,6 @@ public interface FileService {
     Result<CreatShareLinkVO> creatShareLink(CreatShareLinkDTO creatShareLinkDTO);
 
     Result<SharedFileVO> addShareFileByShareLink(String link);
+
+    Result<Void> deleteSharedFile( String link);
 }

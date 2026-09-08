@@ -24,7 +24,7 @@ CloseUploadDTO { String uploadKey }
 
 ContinuableDownloadDTO {String downloadFilePath; Long downloadedSize; int DownloadType} Tipp: DownloadType = 0: 首次下载, 1: 断点重连
 
-ContinuableUploadDTO {String uploadKey; String targetPath; MultipartFile multipartFile; int UploadType; } Tipp: targetPath 为上传文件的文件夹; UploadType = 0: 首次上传, 1: 断点重连
+ContinuableUploadDTO {String uploadKey; String targetPath; } Tipp: targetPath 为上传文件的文件夹
 
 GetUploadedSizeDTO { String uploadKey }
 

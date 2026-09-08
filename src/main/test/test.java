@@ -1,5 +1,9 @@
 
+import com.zuantou.Application;
+import com.zuantou.mapper.file.ShareFileLinkMapper;
+import com.zuantou.pojo.ShareFileLink;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
 
 
 import java.io.*;
@@ -8,6 +12,8 @@ import java.util.List;
 import java.util.Objects;
 
 public class test {
+
+
     @Test
     public void test2() {
         System.out.println(insertedFile(new File("C:/Users/admin/Desktop/aaa/a/a.txt"), new File("C:/Users/admin/Desktop/aaa")));
@@ -95,8 +101,8 @@ public class test {
 
     @Test
     public void test4() throws RuntimeException, IOException, InterruptedException {
-        File sourceFile = new File("C:/Users/admin/Desktop/aaa/bbb/Kopfschmerzen.flac");
-        File targetDir = new File("C:/Users/admin/Desktop/aaa");
+        File sourceFile = new File("E:/codes/IdeaProjects/files/8/222.zip");
+        File targetDir = new File("E:/codes/IdeaProjects/files/1");
         FileInputStream inputStream = new FileInputStream(sourceFile);
         FileOutputStream outputStream = new FileOutputStream(new File(targetDir, sourceFile.getName()));
 
@@ -166,5 +172,8 @@ public class test {
         inputStream2.close();
         outputStream2.close();
     }
+
+
+
 
 }

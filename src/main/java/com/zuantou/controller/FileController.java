@@ -7,6 +7,7 @@ import com.zuantou.pojo.dto.file.continueableDTO.ContinuableDownloadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.ContinuableUploadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.GetUploadedSizeDTO;
 import com.zuantou.service.FileService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.bind.annotation.*;
 
@@ -73,14 +74,14 @@ public class FileController {
         return fileService.restoreFile(deleteFileDTO);
     }
 
-    @GetMapping("/initUpload")
-    public Result<String> initUpload(){
-        return fileService.initUpload();
+    @PostMapping("/initUpload")
+    public Result<String> initUpload(@RequestBody String uploadFilePath){
+        return fileService.initUpload(uploadFilePath);
     }
 
     @PostMapping("/continuableUploadFile")
-    public Result<Void> uploadFile(@ModelAttribute ContinuableUploadDTO continuableUploadDTO) {
-        return fileService.continuableUpload(continuableUploadDTO);
+    public Result<Void> uploadFile(@ModelAttribute ContinuableUploadDTO continuableUploadDTO, HttpServletRequest request) {
+        return fileService.continuableUpload(continuableUploadDTO, request);
     }
 
     @GetMapping("/getUploadedSize")
@@ -91,6 +92,11 @@ public class FileController {
     @PostMapping("/closeUpload")
     public Result<Void> closeUpload(@RequestBody CloseUploadDTO closeUploadDTO){
         return fileService.closeUpload(closeUploadDTO);
+    }
+
+    @GetMapping("/getDownloadFileSize")
+    public Result<Long> getDownloadFileSize(String path){
+        return fileService.getDownloadFileSize(path);
     }
 
     @PostMapping("/downloadFile")
@@ -121,6 +127,11 @@ public class FileController {
     @PostMapping("/addShareFileByShareLink")
     public Result<SharedFileVO> addShareFileByShareLink(@RequestBody String link){
         return fileService.addShareFileByShareLink(link);
+    }
+
+    @PostMapping("/deleteSharedFile")
+    public Result<Void> deleteSharedFile(@RequestBody String link){
+        return fileService.deleteSharedFile(link);
     }
 
     public FileController(FileService fileService) {

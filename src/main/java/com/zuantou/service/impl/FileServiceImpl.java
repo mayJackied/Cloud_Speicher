@@ -1,6 +1,7 @@
 package com.zuantou.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.zuantou.common.exception.BusinessException;
 import com.zuantou.common.properties.CommonProperties;
 import com.zuantou.common.properties.ErrorCode;
@@ -18,15 +19,12 @@ import com.zuantou.pojo.dto.file.continueableDTO.ContinuableUploadDTO;
 import com.zuantou.pojo.dto.file.continueableDTO.GetUploadedSizeDTO;
 import com.zuantou.service.FileService;
 import com.zuantou.common.utils.FileUtil;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.BeanUtils;
-import org.springframework.http.ContentDisposition;
-import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.io.*;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -57,7 +55,7 @@ public class FileServiceImpl implements FileService {
         List<SharedFileVO> sharedFileVOS = new ArrayList<>();
         for (SharedFile sharedFile : sharedFiles) {
             if (sharedFile.isFile()) {
-                sharedFileVOS.add(new SharedFileVO(new FileListVO(null, sharedFile.getFileName(), sharedFile.getLength(), sharedFile.getLastModified(), true), sharedFile.getSharerId(), sharedFile.getSharedFilePath()));
+                sharedFileVOS.add(new SharedFileVO(new FileListVO(null, sharedFile.getFileName(), sharedFile.getFileLength(), sharedFile.getLastModified(), true), sharedFile.getSharerId(), sharedFile.getSharedFilePath()));
             } else {
                 sharedFileVOS.add(new SharedFileVO(FileUtil.getFiles(sharedFile.getSharedFilePath()), sharedFile.getSharerId(), sharedFile.getSharedFilePath()));
             }
@@ -153,6 +151,14 @@ public class FileServiceImpl implements FileService {
         if (!oldFile.renameTo(newFile)) {
             return Result.error(ErrorCode.FILE_OPERATION_FAILED);
         }
+        starredFileMapper.update(
+                null,
+                new LambdaUpdateWrapper<StarredFile>()
+                        .eq(StarredFile::getUserId, UserContext.getUserId())
+                        .eq(StarredFile::getStarredFilePath, renameFileDTO.getPath())
+                        .set(StarredFile::getStarredFilePath, newFile.getPath())
+        );
+
         return Result.success();
     }
 
@@ -309,23 +315,17 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
-    public Result<String> initUpload() {
+    public Result<String> initUpload(String uploadFilePath) {
         String uuid = UUID.randomUUID().toString();
-        continuableUploadMapper.insert(new ContinuableUpload(uuid, null));
+        continuableUploadMapper.insert(new ContinuableUpload(uuid, uploadFilePath));
         return Result.success(uuid);
     }
 
     @Override
-    public Result<Void> continuableUpload(ContinuableUploadDTO continuableUploadDTO) {
+    public Result<Void> continuableUpload(ContinuableUploadDTO continuableUploadDTO, HttpServletRequest request) {
         Integer errorCode = checkFilePermission(continuableUploadDTO.getTargetPath(), OTHER, CommonProperties.COMMON_PATH_OPERATION);
         if (errorCode != null) {
             return Result.error(errorCode);
-        }
-
-        MultipartFile multipartFile = continuableUploadDTO.getMultipartFile();
-
-        if (multipartFile == null || multipartFile.isEmpty()) {
-            return Result.error(ErrorCode.FILE_OPERATION_FAILED);
         }
 
         ContinuableUpload continuableUpload = continuableUploadMapper.selectById(continuableUploadDTO.getUploadKey());
@@ -334,45 +334,16 @@ public class FileServiceImpl implements FileService {
             return Result.error(ErrorCode.UPLOAD_KEY_NOT_FOUND);
         }
 
-        File uploadFilePath;
+        File uploadFilePath = new File(continuableUpload.getUploadFilePath());
 
-        switch (continuableUploadDTO.getUploadType()) {
-            case ContinuableUploadDTO.FIRST_UPLOAD_TYPE -> {
-                String fileName = multipartFile.getOriginalFilename();
-
-                if (fileName == null || fileName.isBlank()) {
-                    return Result.error(ErrorCode.FILE_NAME_ILLEGAL);
-                }
-
-                File newFile = new File(continuableUploadDTO.getTargetPath(), fileName);
-
-                if (newFile.exists()) {
-                    newFile = insertedFile(newFile, newFile.getParentFile());
-                }
-                uploadFilePath = newFile;
-                continuableUpload.setUploadFilePath(newFile.getPath());
-                continuableUploadMapper.updateById(continuableUpload);
-            }
-            case ContinuableUploadDTO.NOT_FIRST_UPLOAD_TYPE -> {
-                String path = continuableUpload.getUploadFilePath();
-                if (path == null || path.isEmpty()) {
-                    return Result.error(ErrorCode.UPLOAD_KEY_NOT_FOUND);
-                }
-                uploadFilePath = new File(path);
-            }
-            default -> {
-                return Result.error(ErrorCode.ARGS_ILLEGAL);
-            }
-        }
-
-        try (InputStream input = multipartFile.getInputStream();
-             FileOutputStream fos = new FileOutputStream(uploadFilePath, true)) {
+        try (InputStream input = request.getInputStream();
+             FileOutputStream output = new FileOutputStream(uploadFilePath, true)) {
 
             byte[] buffer = new byte[fileProperties.getUploadBufferSize() * 1024 * 1024];
             int len;
 
             while ((len = input.read(buffer)) != -1) {
-                fos.write(buffer, 0, len);
+                output.write(buffer, 0, len);
             }
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -387,7 +358,11 @@ public class FileServiceImpl implements FileService {
             return Result.error(ErrorCode.UPLOAD_KEY_NOT_FOUND);
         }
         try {
-            return Result.success(Files.size(Path.of(continuableUpload.getUploadFilePath())));
+            String path = continuableUpload.getUploadFilePath();
+            if (path == null || path.isEmpty()) {
+                return Result.success(0L);
+            }
+            return Result.success(Files.size(Path.of(path)));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -401,6 +376,17 @@ public class FileServiceImpl implements FileService {
         }
         continuableUploadMapper.deleteById(continuableUpload.getUploadKey());
         return Result.success();
+    }
+
+    @Override
+    public Result<Long> getDownloadFileSize(String path) {
+        Integer errorCode = checkFilePermission(path, IN_PUBLIC_PATH_OR_SHARED_FILE_ALLOWED_OPERATION, CommonProperties.COMMON_PATH_OPERATION);
+
+        if (errorCode != null) {
+            throw new BusinessException(errorCode);
+        }
+
+        return Result.success(new File(path).length());
     }
 
     @Override
@@ -419,22 +405,13 @@ public class FileServiceImpl implements FileService {
 
         response.setContentType("application/octet-stream");
 
-        ContentDisposition contentDisposition = ContentDisposition
-                .attachment()
-                .filename(downloadFile.getName(), StandardCharsets.UTF_8)
-                .build();
-
-        response.setHeader(
-                HttpHeaders.CONTENT_DISPOSITION,
-                contentDisposition.toString()
-        );
-        try (FileInputStream fis = new FileInputStream(downloadFile); OutputStream os = response.getOutputStream()) {
+        try (FileInputStream input = new FileInputStream(downloadFile); OutputStream output = response.getOutputStream()) {
             if (continuableDownloadDTO.getDownloadType() == ContinuableDownloadDTO.NOT_FIRST_DOWNLOAD_TYPE) {
                 Long downloadedSize = continuableDownloadDTO.getDownloadedSize();
                 if (downloadedSize == null) {
                     throw new BusinessException(ErrorCode.ARGS_ILLEGAL);
                 }
-                long skipped = fis.skip(downloadedSize);
+                long skipped = input.skip(downloadedSize);
 
                 if (skipped != downloadedSize) {
                     throw new BusinessException(ErrorCode.ARGS_ILLEGAL);
@@ -444,8 +421,8 @@ public class FileServiceImpl implements FileService {
 
             int len;
 
-            while ((len = fis.read(buffer)) != -1) {
-                os.write(buffer, 0, len);
+            while ((len = input.read(buffer)) != -1) {
+                output.write(buffer, 0, len);
             }
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -498,7 +475,22 @@ public class FileServiceImpl implements FileService {
             return Result.error(errorCode);
         }
         String shareLink = UUID.randomUUID().toString().replace("-", "");
-        shareFileLinkMapper.insert(new ShareFileLink(shareLink, UserContext.getUserId(), creatShareLinkDTO.getShareFilePath(), System.currentTimeMillis() + (creatShareLinkDTO.getExpireDuration() == 0 ? Math.round(creatShareLinkDTO.getExpireDuration() * 60 * 60 * 1000) : Math.round(fileProperties.getRetainTime() * 60 * 60 * 1000))));
+
+        long expireTime;
+
+        if (creatShareLinkDTO.getExpireDuration() == 0) {
+            expireTime = System.currentTimeMillis() + Math.round(fileProperties.getRetainTime() * 60 * 60 * 1000);
+        } else {
+            expireTime = System.currentTimeMillis() + Math.round(creatShareLinkDTO.getExpireDuration());
+        }
+
+        shareFileLinkMapper.insert(
+                new ShareFileLink(
+                        shareLink,
+                        UserContext.getUserId(),
+                        creatShareLinkDTO.getShareFilePath(), expireTime
+                )
+        );
         return Result.success(new CreatShareLinkVO(shareLink));
     }
 
@@ -519,9 +511,19 @@ public class FileServiceImpl implements FileService {
         if (sharedFile.isFile()) {
             sharedFileVO = new SharedFileVO(new FileListVO(null, sharedFile.getName(), sharedFile.length(), sharedFile.lastModified(), true), shareFileLink.getSharerId(), shareFileLink.getShareFilePath());
         } else {
-            sharedFileVO =  new SharedFileVO(FileUtil.getFiles(shareFileLink.getShareFilePath()), shareFileLink.getSharerId(), shareFileLink.getShareFilePath());
+            sharedFileVO = new SharedFileVO(FileUtil.getFiles(shareFileLink.getShareFilePath()), shareFileLink.getSharerId(), shareFileLink.getShareFilePath());
         }
         return Result.success(sharedFileVO);
+    }
+
+    @Override
+    public Result<Void> deleteSharedFile(String link) {
+        int i = sharedFileMapper.delete(new LambdaQueryWrapper<SharedFile>().eq(SharedFile::getShareLink, link));
+        shareFileLinkMapper.deleteById(link);
+        if (i == 0){
+            return Result.error(ErrorCode.ARGS_ILLEGAL);
+        }
+        return Result.success();
     }
 
     /**

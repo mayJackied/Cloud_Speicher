@@ -15,7 +15,7 @@ public class SharedFile {
     private String sharedFilePath;
     private String shareLink;
     private String fileName;
-    private Long length;
+    private Long fileLength;
     private Long lastModified;
     private boolean isFile;
 }

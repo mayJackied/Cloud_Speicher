@@ -23,14 +23,12 @@ public class Schedules {
     private final DeleteBinFileSourceMapper deleteBinFileSourceMapper;
     private final JwtBlacklistMap jwtBlacklistMap;
     private final JwtBlacklistMapper jwtBlacklistMapper;
-    private final MyValFileProperties fileProperties;
     private final ShareFileLinkMapper shareFileMapper;
 
-    public Schedules(DeleteBinFileSourceMapper deleteBinFileSourceMapper, JwtBlacklistMap jwtBlacklistMap, JwtBlacklistMapper jwtBlacklistMapper, MyValFileProperties fileProperties, ShareFileLinkMapper shareFileMapper) {
+    public Schedules(DeleteBinFileSourceMapper deleteBinFileSourceMapper, JwtBlacklistMap jwtBlacklistMap, JwtBlacklistMapper jwtBlacklistMapper, ShareFileLinkMapper shareFileMapper) {
         this.deleteBinFileSourceMapper = deleteBinFileSourceMapper;
         this.jwtBlacklistMap = jwtBlacklistMap;
         this.jwtBlacklistMapper = jwtBlacklistMapper;
-        this.fileProperties = fileProperties;
         this.shareFileMapper = shareFileMapper;
     }
 
@@ -56,7 +54,7 @@ public class Schedules {
 
     @Scheduled(fixedRate = 60 * 60 * 1000)
     public void removeExpiredBinFiles() {
-        deleteBinFileSourceMapper.delete(new LambdaQueryWrapper<DeleteBinFileSource>().le(DeleteBinFileSource::getCreatTime, System.currentTimeMillis() - fileProperties.getRetainTime() * 24 * 60 * 60 * 1000));
+        deleteBinFileSourceMapper.delete(new LambdaQueryWrapper<DeleteBinFileSource>().le(DeleteBinFileSource::getCreatTime, System.currentTimeMillis()));
     }
 
     @Scheduled(fixedRate = 60 * 60 * 1000)

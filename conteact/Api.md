@@ -80,7 +80,8 @@ post: /api/file/restoreFile
 DTO: DeleteFileDTO deleteFileDTO
 
 *init_upload*
-get: /api/file/initUpload
+post: /api/file/initUpload
+DTO: String uploadFilePath
 VO: Result<String>
 
 *continuable_upload_file*
@@ -97,6 +98,11 @@ VO: Result<Long>
 post: /api/file/closeUpload
 DTO: CloseUploadDTO closeUploadDTO
 VO: Result<Void>
+
+*getDownloadFileSize*
+get: /api/file/getDownloadFileSize
+DTO: String path
+VO: Result<Long>
 
 *download_file*
 post: /api/file/downloadFile
@@ -126,5 +132,8 @@ post: /api/file/addShareFileByShareLink
 DTO: String link        Tipp: 分享链接
 VO: Result<SharedFileVO>
 
-
+*delete_shared_file*
+post: /api/file/deleteSharedFile
+DTO: String link
+VO: Result<Void>
 }
