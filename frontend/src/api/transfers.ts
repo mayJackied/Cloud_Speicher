@@ -10,14 +10,8 @@ import { ErrorCode } from '@/types/errorCode'
 import { DownloadType } from '@/types/file'
 import type { AxiosProgressEvent } from 'axios'
 
-/**
- * 当前 FRP/Tomcat 链路在约 5.5MB 的 multipart 请求处会 EOF。
- * 每个请求只携带 4MB 文件数据，确保 multipart 能完整解析并进入控制器。
- */
-export const UPLOAD_CHUNK_SIZE = 4 * 1024 * 1024
-
-export async function allocateUploadKey() {
-  const init = await initUpload()
+export async function allocateUploadKey(uploadFilePath: string) {
+  const init = await initUpload(uploadFilePath)
   if (!isResultShape(init.data) || init.data.code !== ErrorCode.OK || !init.data.data) {
     return { ok: false as const, result: init.data }
   }
@@ -37,13 +31,11 @@ export async function pushUploadChunk(options: {
   targetPath: string
   file: File
   offset: number
-  uploadType: 0 | 1
-  chunkSize?: number
   signal?: AbortSignal
   onProgress?: (loadedInChunk: number, chunkBytes: number) => void
 }) {
-  const chunkSize = options.chunkSize ?? UPLOAD_CHUNK_SIZE
-  const end = Math.min(options.file.size, options.offset + chunkSize)
+  // 原始请求体会被后端边接收边追加；恢复时仅发送服务端 offset 后的剩余内容。
+  const end = options.file.size
   const chunkBytes = end - options.offset
   const chunk = options.file.slice(options.offset, end)
   const uploaded = await continuableUploadFile(
@@ -51,8 +43,6 @@ export async function pushUploadChunk(options: {
       uploadKey: options.uploadKey,
       targetPath: options.targetPath,
       file: chunk,
-      fileName: options.file.name,
-      uploadType: options.uploadType,
     },
     {
       signal: options.signal,

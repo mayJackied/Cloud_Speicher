@@ -4,6 +4,7 @@ import {
   addShareFileByShareLink,
   creatShareLink,
   deleteFiles,
+  deleteSharedFile,
   unzipFile,
   zipFile,
 } from './files'
@@ -55,5 +56,13 @@ describe('删除与压缩请求', () => {
     void addShareFileByShareLink('share-key')
 
     expect(post).toHaveBeenCalledWith('/file/addShareFileByShareLink', '"share-key"')
+  })
+
+  it('撤销分享按 JSON 字符串发送 share key', () => {
+    const post = vi.spyOn(api, 'post').mockResolvedValue({} as never)
+
+    void deleteSharedFile('share-key')
+
+    expect(post).toHaveBeenCalledWith('/file/deleteSharedFile', '"share-key"')
   })
 })

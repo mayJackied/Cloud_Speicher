@@ -13,7 +13,6 @@ const transferApi = vi.hoisted(() => ({
   pushUploadChunk: vi.fn(),
   finishUpload: vi.fn(),
   downloadContinuableWithProgress: vi.fn(),
-  UPLOAD_CHUNK_SIZE: 4 * 1024 * 1024,
 }))
 
 vi.mock('@/api/transfers', () => transferApi)
@@ -87,9 +86,9 @@ describe('断点传输状态', () => {
     })
     transferApi.allocateUploadKey.mockResolvedValue({ ok: true, uploadKey: 'up-1' })
     transferApi.pushUploadChunk.mockImplementation(
-      async ({ file, offset }: { file: File; offset: number }) => ({
+      async ({ file }: { file: File }) => ({
         ok: true,
-        nextOffset: Math.min(file.size, offset + 4),
+        nextOffset: file.size,
       }),
     )
     transferApi.finishUpload.mockResolvedValue({ data: { code: 1, data: null } })
@@ -99,13 +98,10 @@ describe('断点传输状态', () => {
     await Promise.resolve()
     await Promise.resolve()
 
-    expect(transferApi.allocateUploadKey).toHaveBeenCalled()
-    expect(transferApi.pushUploadChunk).toHaveBeenCalledTimes(2)
+    expect(transferApi.allocateUploadKey).toHaveBeenCalledWith('../files/1/large.bin')
+    expect(transferApi.pushUploadChunk).toHaveBeenCalledTimes(1)
     expect(transferApi.pushUploadChunk.mock.calls[0]?.[0]).toEqual(
-      expect.objectContaining({ offset: 0, uploadType: 0 }),
-    )
-    expect(transferApi.pushUploadChunk.mock.calls[1]?.[0]).toEqual(
-      expect.objectContaining({ offset: 4, uploadType: 1 }),
+      expect.objectContaining({ offset: 0 }),
     )
     // 正常上传不查 getUploadedSize；仅暂停/中断后续传才 probe。
     expect(transferApi.probeUploadedSize).not.toHaveBeenCalled()

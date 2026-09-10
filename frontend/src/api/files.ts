@@ -15,7 +15,7 @@ import type {
   StarredFileVO,
   ZipFileDTO,
 } from '@/types/file'
-import { DownloadType } from '@/types/file'
+import { DownloadType, joinServerPath } from '@/types/file'
 import type { Result } from '@/types/result'
 import { asUtf8UploadFile } from '@/utils/text'
 import { isResultShape } from '@/dev/contract'
@@ -42,8 +42,8 @@ export function renameFile(dto: RenameFileDTO) {
   return api.post<Result<null>>('/file/renameFile', { path: dto.path, new_name: dto.newName })
 }
 
-export function initUpload() {
-  return api.get<Result<string>>('/file/initUpload')
+export function initUpload(uploadFilePath: string) {
+  return api.post<Result<string>>('/file/initUpload', JSON.stringify(uploadFilePath))
 }
 
 export function continuableUploadFile(
@@ -53,20 +53,20 @@ export function continuableUploadFile(
     signal?: AbortSignal
   },
 ) {
-  const body = new FormData()
-  body.append('uploadKey', dto.uploadKey)
-  body.append('targetPath', dto.targetPath)
-  const name = dto.fileName || (dto.file instanceof File ? dto.file.name : 'blob.bin')
-  body.append('multipartFile', dto.file, name)
-  body.append('uploadType', String(dto.uploadType))
-  // 浏览器到本地 Vite 的进度可能很快，但 Vite 经 FRP 转发会明显更慢。
-  // 固定超时会主动截断 multipart，让 Tomcat 报 EOF；只在真实网络断开时恢复。
+  // 新后端直接从 HttpServletRequest 输入流边收边追加，不再等待 MultipartFile 解析完成。
   const config: AxiosRequestConfig = {
     timeout: 0,
     signal: opts?.signal,
     onUploadProgress: opts?.onProgress,
+    params: {
+      uploadKey: dto.uploadKey,
+      targetPath: dto.targetPath,
+    },
+    headers: {
+      'Content-Type': 'application/octet-stream',
+    },
   }
-  return api.post<Result<null>>('/file/continuableUploadFile', body, config)
+  return api.post<Result<null>>('/file/continuableUploadFile', dto.file, config)
 }
 
 export function getUploadedSize(dto: { uploadKey: string }) {
@@ -80,7 +80,7 @@ export function closeUpload(dto: CloseUploadDTO) {
 /** 兼容旧整包上传调用：init → 一次 continuable → close。 */
 export async function uploadFile(dir: string, file: File) {
   const utf8File = asUtf8UploadFile(file)
-  const init = await initUpload()
+  const init = await initUpload(joinServerPath(dir, utf8File.name))
   if (!isResultShape(init.data) || init.data.code !== ErrorCode.OK || !init.data.data) {
     return init
   }
@@ -90,8 +90,6 @@ export async function uploadFile(dir: string, file: File) {
       uploadKey,
       targetPath: dir,
       file: utf8File,
-      fileName: utf8File.name,
-      uploadType: 0,
     })
     await closeUpload({ uploadKey })
     return uploaded
@@ -161,4 +159,9 @@ export function creatShareLink(dto: CreatShareLinkDTO) {
  */
 export function addShareFileByShareLink(link: string) {
   return api.post<Result<SharedFileVO>>('/file/addShareFileByShareLink', JSON.stringify(link))
+}
+
+/** 撤销分享码；后端必须先校验当前用户确为该码的 sharer，UI 才能安全开放。 */
+export function deleteSharedFile(link: string) {
+  return api.post<Result<null>>('/file/deleteSharedFile', JSON.stringify(link))
 }

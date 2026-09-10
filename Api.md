@@ -140,13 +140,14 @@ VO: `Void`
 *upload_file*（兼容封装）  
 旧整包 `POST /api/file/uploadFile` **已移除**。前端 `uploadFile()` 现封装为：`initUpload` → 一次 `continuableUploadFile` → `closeUpload`。
 
-*init_upload*　GET `/api/file/initUpload`  
-VO: `Result<String>`（uploadKey / UUID）
+*init_upload*　POST `/api/file/initUpload`
+DTO: JSON 字符串目标文件完整路径，例如 `"../files/8/video.mp4"`
+VO: `Result<String>`（uploadKey / UUID）；后端在会话表同时记录目标路径
 
-*continuable_upload_file*　POST `/api/file/continuableUploadFile`  
-**multipart**（`@ModelAttribute`）：`uploadKey` + `targetPath`（目标文件夹）+ `multipartFile` + `uploadType`（0 首次 / 1 续传）  
+*continuable_upload_file*　POST `/api/file/continuableUploadFile?uploadKey=&targetPath=`
+请求体：`application/octet-stream` 原始文件字节；`@ModelAttribute ContinuableUploadDTO` 只绑定查询参数 `{ uploadKey, targetPath }`。
 VO: `Result<Void>`  
-首次写入会在目标目录创建文件（撞名则自动编号）；续传向已登记路径追加字节。
+后端直接从 `HttpServletRequest.getInputStream()` 边收边追加到 init 登记的文件。网络中断时已收到部分仍会落盘；恢复前先查 size，再发送原文件剩余部分。当前实现若目标文件已存在会直接追加，前端/后端必须先处理重名，避免损坏原文件。
 
 *get_uploaded_size*　GET `/api/file/getUploadedSize?uploadKey=`  
 VO: `Result<Long>`（已落盘字节，权威 offset）
@@ -154,6 +155,9 @@ VO: `Result<Long>`（已落盘字节，权威 offset）
 *close_upload*　POST `/api/file/closeUpload`  
 DTO: `{ uploadKey }`  
 VO: `Result<Void>`（删除上传会话行）
+
+*get_download_file_size*　GET `/api/file/getDownloadFileSize?path=`
+VO: `Result<Long>`（下载前查询服务端实际文件大小）
 
 *download_file*　POST `/api/file/downloadFile`  
 DTO: `ContinuableDownloadDTO` `{ downloadFilePath, downloadedSize?, downloadType }`  
@@ -185,6 +189,11 @@ DTO: JSON 字符串分享码（请求体是 `"key"`，不是 `{ link }`）
 VO: `SharedFileVO`；无效/过期 → `20010`，已使用 → `20011`。成功后该条目出现在下一次 `getFiles.sharedFileVOS`。
 领取仍偶发 `20010`（库有行却查不到或已过期被定时删）：见备忘录「当前阻塞」。
 
+*delete_shared_file*　POST `/api/file/deleteSharedFile`
+DTO: JSON 字符串分享码 `"key"`
+VO: `Result<Void>`；撤销该码并删除所有通过该码建立的共享记录，接收者之后不再可见。
+**安全要求：** 必须先校验 `share_file_links.sharer_id == JWT user_id`。`cdf6773` 尚未校验且未领取过时会因删除数为 0 错报 `30001`；本地 backend 已修，部署前前端不开放撤销按钮。
+
 *zip*　POST `/api/file/zip`  
 DTO: `ZipFileDTO` `{ path, targetDir }`（驼峰；`targetDir` 必须是文件夹，空字符串 = 源文件父目录）  
 VO: `Result<Void>`  
@@ -215,13 +224,13 @@ DTO: `{ path }`（回收站内项；后端用落盘路径查还原元数据）
 VO: `Void`  
 从回收站还原。前端当前仍有一套本机软删/还原逻辑，与后端回收站 API 可并存，联调时以现网为准。
 
-### 断点传输（现网已实现；复核 backend `075193e`）
+### 断点传输（backend `cdf6773` 新流式实现）
 
 前端适配层：`frontend/src/api/files.ts` + `frontend/src/api/transfers.ts`；传输列表在线模式直接调这些接口，不再使用拟定的 `/file/transfer/...`。
 
-- 上传：当前 FRP/Tomcat 链路约 5.5MB 会在 multipart 解析阶段 EOF，因此前端使用 4MB 完整 multipart 分片：`initUpload` → 循环 `continuableUploadFile`（首片 `uploadType=0`，后续 `1`）→ **仅中断恢复时** `getUploadedSize` → 全部分片完成后 `closeUpload`
+- 上传：`POST initUpload`（完整目标路径）→ `POST continuableUploadFile`（原始字节流，正常时发送整个文件）→ 中断后 `GET getUploadedSize` 获取已落盘 offset，再发送剩余字节 → 完整响应后 `closeUpload`
 - 下载：`downloadFile` + `downloadType`/`downloadedSize`；传输列表用 `onDownloadProgress` 更新进度
-- 数据库只存 uploadKey 与临时路径；文件内容写磁盘
+- 数据库只存 uploadKey 与目标路径；上传请求不再经过 `MultipartFile`，避免完整 multipart 解析前中断导致全部失效
 
 错误码补充：`20007` 回收站禁止、`20008` 上传 KEY 不存在、`20009` 已收藏、`20010` 分享码无效、`20011` 分享码已使用、`30001` 传参有误。
 
@@ -250,7 +259,7 @@ path 示例（后端注释）：相对路径从最底层开始，如 `../files/p
 
 RenameFileDTO `{ String path; String new_name }`
 
-UploadFileDTO `{ String path; MultipartFile file }`
+ContinuableUploadDTO `{ String uploadKey; String targetPath }`（查询参数；文件内容是原始请求体）
 
 DownloadFileDTO / DeleteFileDTO `{ String path }`
 
@@ -419,12 +428,14 @@ VO: `Void`
 *upload_file* (compat wrapper)  
 Legacy `POST /api/file/uploadFile` is **removed**. Frontend `uploadFile()` now wraps `initUpload` → one `continuableUploadFile` → `closeUpload`.
 
-*init_upload*　GET `/api/file/initUpload`  
+*init_upload*　POST `/api/file/initUpload`
+Body: JSON string containing the complete destination file path, e.g. `"../files/8/video.mp4"`
 VO: `Result<String>` (uploadKey)
 
-*continuable_upload_file*　POST `/api/file/continuableUploadFile`  
-**multipart**: `uploadKey` + `targetPath` + `multipartFile` + `uploadType` (0 first / 1 resume)  
+*continuable_upload_file*　POST `/api/file/continuableUploadFile?uploadKey=&targetPath=`
+Body: raw `application/octet-stream`; `ContinuableUploadDTO { uploadKey, targetPath }` is bound from query parameters.
 VO: `Result<Void>`
+The server appends bytes as they arrive. After a disconnect, query the persisted size and resend only the remaining `File.slice(offset)`.
 
 *get_uploaded_size*　GET `/api/file/getUploadedSize?uploadKey=`  
 VO: `Result<Long>`
@@ -432,6 +443,9 @@ VO: `Result<Long>`
 *close_upload*　POST `/api/file/closeUpload`  
 DTO: `{ uploadKey }`  
 VO: `Result<Void>`
+
+*get_download_file_size*　GET `/api/file/getDownloadFileSize?path=`
+VO: `Result<Long>`
 
 *download_file*　POST `/api/file/downloadFile`  
 DTO: `ContinuableDownloadDTO` `{ downloadFilePath, downloadedSize?, downloadType }`  
@@ -457,6 +471,10 @@ The backend currently spells the endpoint and types as `creat`. In `075193e`, `e
 DTO: a JSON string containing the share key (body is `"key"`, not `{ link }`)
 VO: `SharedFileVO`; invalid/expired → `20010`, already used → `20011`.
 Redeem still intermittently returns `20010` even when a row was inserted — see `备忘录.md`.
+
+*delete_shared_file*　POST `/api/file/deleteSharedFile`
+DTO: JSON share-key string `"key"`. Revokes the key and removes all recipient records created from it.
+The backend must verify the JWT user is the key's `sharerId`. Commit `cdf6773` does not; the local backend patch adds this check and makes an unused key revocable.
 
 *zip*　POST `/api/file/zip`  
 DTO: `ZipFileDTO` `{ path, targetDir }` (camelCase; `targetDir` must be a folder; empty string = parent of source)  
@@ -485,11 +503,11 @@ VO: `Void`
 DTO: `{ path }` (item in recycle bin)  
 VO: `Void`
 
-### Resumable transfer (rechecked against backend `075193e`)
+### Resumable transfer (backend `cdf6773` streaming implementation)
 
 Frontend adapters: `files.ts` + `transfers.ts`. Online transfer list calls these endpoints (not the old proposed `/file/transfer/...` draft).
 
-- Upload: the current FRP/Tomcat link raises EOF while parsing multipart around 5.5MB, so the client sends complete 4MB multipart chunks: `initUpload` → repeated `continuableUploadFile` (first chunk type `0`, later chunks `1`) → `getUploadedSize` only for recovery → `closeUpload` after every chunk succeeds.
+- Upload: `POST initUpload` with the complete destination path → one raw-stream `continuableUploadFile` request for normal uploads → after interruption, `getUploadedSize` and resend only the remainder → `closeUpload` after the whole file succeeds.
 - Download: `downloadFile` with `downloadType` / `downloadedSize`
 - Extra error codes: `20007` bin forbidden, `20008` upload key missing, `20009` already starred, `20010` invalid share key, `20011` share key used, `30001` bad args
 
@@ -518,7 +536,7 @@ Regular trees return `fileName` per node only, so the frontend joins `../files` 
 
 RenameFileDTO `{ String path; String new_name }`
 
-UploadFileDTO `{ String path; MultipartFile file }`
+ContinuableUploadDTO `{ String uploadKey; String targetPath }` (query parameters; file bytes are the raw request body)
 
 DownloadFileDTO / DeleteFileDTO `{ String path }`
 

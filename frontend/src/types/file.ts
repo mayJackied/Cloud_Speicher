@@ -64,8 +64,6 @@ export interface ContinuableUploadDTO {
   uploadKey: string
   targetPath: string
   file: File | Blob
-  fileName?: string
-  uploadType: 0 | 1
 }
 
 export interface CloseUploadDTO {

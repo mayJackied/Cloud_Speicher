@@ -15,7 +15,6 @@ import {
   saveTransferRecord,
 } from '@/utils/transferDb'
 import {
-  UPLOAD_CHUNK_SIZE,
   allocateUploadKey,
   downloadContinuableWithProgress,
   finishUpload,
@@ -25,9 +24,11 @@ import {
 import { closeUpload } from '@/api/files'
 import { isResultShape } from '@/dev/contract'
 import { ErrorCode } from '@/types/errorCode'
+import { joinServerPath } from '@/types/file'
 import { isAxiosError } from 'axios'
 
-const DEFAULT_CHUNK_SIZE = UPLOAD_CHUNK_SIZE
+/** 仅用于离线模拟；在线模式一次发送整文件或断点后的全部剩余内容。 */
+const DEFAULT_CHUNK_SIZE = 5 * 1024 * 1024
 const MOCK_TICK_MS = 120
 
 const sourceFiles = new Map<string, File>()
@@ -333,11 +334,11 @@ export const useTransferStore = defineStore('transfers', () => {
     try {
       let uploadKey = task.serverTransferId
       let offset = task.nextOffset
-      let nextType: 0 | 1 = 0
       let recoveryAttempts = 0
+      const uploadFilePath = joinServerPath(task.targetPath, file.name)
 
       if (!uploadKey) {
-        const allocated = await allocateUploadKey()
+        const allocated = await allocateUploadKey(uploadFilePath)
         if (!allocated.ok) {
           const code = isResultShape(allocated.result) ? allocated.result.code : ErrorCode.EXCEPTION
           failTask(id, code)
@@ -345,15 +346,11 @@ export const useTransferStore = defineStore('transfers', () => {
         }
         uploadKey = allocated.uploadKey
         offset = 0
-        nextType = 0
         task = patchTask(id, { serverTransferId: uploadKey, nextOffset: 0, transferredBytes: 0 }) ?? task
       } else {
         const probed = await probeUploadedSize(uploadKey)
         if (probed.ok) {
           offset = probed.nextOffset
-          // uploadKey 已存在即属于中断重连；即使服务端当前落盘为 0，
-          // 会话里也可能已登记目标路径，不能再次按首次上传创建新文件。
-          nextType = 1
           patchTask(id, { nextOffset: offset, transferredBytes: offset })
         } else {
           const code = isResultShape(probed.result) ? probed.result.code : ErrorCode.EXCEPTION
@@ -361,7 +358,7 @@ export const useTransferStore = defineStore('transfers', () => {
             failTask(id, code)
             return
           }
-          const allocated = await allocateUploadKey()
+          const allocated = await allocateUploadKey(uploadFilePath)
           if (!allocated.ok) {
             const allocateCode = isResultShape(allocated.result)
               ? allocated.result.code
@@ -371,7 +368,6 @@ export const useTransferStore = defineStore('transfers', () => {
           }
           uploadKey = allocated.uploadKey
           offset = 0
-          nextType = 0
           task =
             patchTask(id, {
               serverTransferId: uploadKey,
@@ -387,7 +383,6 @@ export const useTransferStore = defineStore('transfers', () => {
           targetPath: task.targetPath,
           file,
           offset: 0,
-          uploadType: 0,
         })
         if (!empty.ok) {
           const code = isResultShape(empty.result) ? empty.result.code : ErrorCode.FILE_OPERATION_FAILED
@@ -418,10 +413,8 @@ export const useTransferStore = defineStore('transfers', () => {
             targetPath: task.targetPath,
             file,
             offset,
-            uploadType: nextType,
-            chunkSize: DEFAULT_CHUNK_SIZE,
             signal: controller.signal,
-            onProgress: (loaded) => {
+            onProgress: (loaded, requestBytes) => {
               if (controller.signal.aborted) {
                 return
               }
@@ -429,7 +422,7 @@ export const useTransferStore = defineStore('transfers', () => {
               const elapsed = Math.max((Date.now() - startedAt) / 1000, 0.001)
               const speedBps = Math.round(loaded / elapsed)
               const left = Math.max(0, file.size - transferred)
-              const waitingForBackend = loaded >= DEFAULT_CHUNK_SIZE || transferred >= file.size
+              const waitingForBackend = loaded >= requestBytes
               patchTask(id, {
                 status: waitingForBackend ? 'waiting_backend' : 'running',
                 transferredBytes: transferred,
@@ -456,7 +449,6 @@ export const useTransferStore = defineStore('transfers', () => {
             throw error
           }
           offset = recovered.nextOffset
-          nextType = 1
           patchTask(id, {
             transferredBytes: offset,
             nextOffset: offset,
@@ -471,9 +463,8 @@ export const useTransferStore = defineStore('transfers', () => {
           return
         }
         recoveryAttempts = 0
-        // 正常上传：只循环 continuableUpload；getUploadedSize 仅用于暂停/中断后续传。
+        // 正常上传一次即到文件尾；getUploadedSize 仅用于暂停/中断后的恢复。
         offset = pushed.nextOffset
-        nextType = 1
         const elapsed = Math.max((Date.now() - startedAt) / 1000, 0.001)
         const speedBps = Math.round((offset - previous) / elapsed)
         const left = Math.max(0, file.size - offset)

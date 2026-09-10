@@ -1,10 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from './client'
-import {
-  UPLOAD_CHUNK_SIZE,
-  downloadContinuableWithProgress,
-  pushUploadChunk,
-} from './transfers'
+import { downloadContinuableWithProgress, pushUploadChunk } from './transfers'
 import { closeUpload, downloadFile, getStarredFiles, initUpload } from './files'
 
 afterEach(() => {
@@ -19,28 +15,32 @@ describe('现网断点传输与星标适配层', () => {
     })
   })
 
-  it('initUpload 走 GET /file/initUpload', () => {
-    const get = vi.spyOn(api, 'get').mockResolvedValue({} as never)
-    void initUpload()
-    expect(get).toHaveBeenCalledWith('/file/initUpload')
+  it('initUpload 走 POST 并发送目标文件完整路径', () => {
+    const post = vi.spyOn(api, 'post').mockResolvedValue({} as never)
+    void initUpload('../files/8/large.bin')
+    expect(post).toHaveBeenCalledWith('/file/initUpload', '"../files/8/large.bin"')
   })
 
-  it('continuableUpload 使用低于 EOF 阈值的完整 multipart 分片', async () => {
+  it('continuableUpload 用原始字节流发送断点后的全部剩余内容', async () => {
     const post = vi.spyOn(api, 'post').mockResolvedValue({ data: { code: 1, data: null } } as never)
-    const file = new File([new Uint8Array(UPLOAD_CHUNK_SIZE + 3)], 'large.bin')
+    const file = new File([new Uint8Array(12)], 'large.bin')
 
     const result = await pushUploadChunk({
       uploadKey: 'k1',
       targetPath: '../files/1',
       file,
-      offset: 0,
-      uploadType: 0,
+      offset: 5,
     })
 
-    const body = post.mock.calls[0]?.[1] as FormData
-    expect(UPLOAD_CHUNK_SIZE).toBe(4 * 1024 * 1024)
-    expect((body.get('multipartFile') as Blob).size).toBe(UPLOAD_CHUNK_SIZE)
-    expect(result).toEqual({ ok: true, nextOffset: UPLOAD_CHUNK_SIZE })
+    expect((post.mock.calls[0]?.[1] as Blob).size).toBe(7)
+    expect(post.mock.calls[0]?.[2]).toEqual(
+      expect.objectContaining({
+        timeout: 0,
+        params: { uploadKey: 'k1', targetPath: '../files/1' },
+        headers: { 'Content-Type': 'application/octet-stream' },
+      }),
+    )
+    expect(result).toEqual({ ok: true, nextOffset: 12 })
   })
 
   it('continuableUpload 不用固定超时截断大文件', async () => {
@@ -50,13 +50,14 @@ describe('现网断点传输与星标适配层', () => {
       uploadKey: 'k1',
       targetPath: '../files/1',
       file: new Blob(['x']),
-      fileName: 'a.bin',
-      uploadType: 0,
     })
     expect(post).toHaveBeenCalledWith(
       '/file/continuableUploadFile',
-      expect.any(FormData),
-      expect.objectContaining({ timeout: 0 }),
+      expect.any(Blob),
+      expect.objectContaining({
+        timeout: 0,
+        params: { uploadKey: 'k1', targetPath: '../files/1' },
+      }),
     )
   })
 

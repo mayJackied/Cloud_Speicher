@@ -122,7 +122,10 @@ const mockFileBytes = new Map<string, Uint8Array>()
 const mockUploads = new Map<string, { path: string; size: number }>()
 const mockStars = new Map<number, Set<string>>()
 const mockShareLinks = new Map<string, { path: string; sharerId: number }>()
-const mockShared = new Map<number, Array<{ path: string; sharerId: number; node: MockNode }>>()
+const mockShared = new Map<
+  number,
+  Array<{ path: string; sharerId: number; shareKey?: string; node: MockNode }>
+>()
 mockFileBytes.set(`${FILE_PREFIX}/public/photo/FLORA_SPECTRA.svg`, sampleSvgBytes)
 
 function userIdFromToken(token: string): number {
@@ -251,10 +254,19 @@ function mockApiPlugin(): Plugin {
             return
           }
 
-          if (req.method === 'GET' && url.startsWith('/api/file/initUpload')) {
-            const key = `mock-up-${Date.now().toString(36)}`
-            mockUploads.set(key, { path: '', size: 0 })
-            sendJson(res, ok(key))
+          if (req.method === 'POST' && url === '/api/file/initUpload') {
+            void readRaw(req).then((bytes) => {
+              const raw = new TextDecoder().decode(bytes)
+              let uploadFilePath = ''
+              try {
+                uploadFilePath = String(JSON.parse(raw))
+              } catch {
+                uploadFilePath = raw.trim().replace(/^"|"$/g, '')
+              }
+              const key = `mock-up-${Date.now().toString(36)}`
+              mockUploads.set(key, { path: uploadFilePath, size: 0 })
+              sendJson(res, ok(key))
+            })
             return
           }
 
@@ -271,12 +283,8 @@ function mockApiPlugin(): Plugin {
 
           if (req.method === 'POST' && url === '/api/file/continuableUploadFile') {
             void readRaw(req).then((bytes) => {
-              const body = new TextDecoder('latin1').decode(bytes)
-              const uploadKey = multipartField(body, 'uploadKey')
-              const targetPath = multipartField(body, 'targetPath')
-              const uploadType = Number(multipartField(body, 'uploadType') || '0')
-              const uploadedName =
-                decodeFileName(multipartField(body, 'fileName')) || multipartFilename(body)
+              const uploadKey = queryParam(req.url ?? '', 'uploadKey')
+              const targetPath = queryParam(req.url ?? '', 'targetPath')
               const session = mockUploads.get(uploadKey)
               if (!session) {
                 sendJson(res, fail(20008))
@@ -287,43 +295,29 @@ function mockApiPlugin(): Plugin {
                 sendJson(res, fail(denied))
                 return
               }
-              const fileBytes = fileBytesFromStored(bytes)
-              if (uploadType === 0 || !session.path) {
-                const segments = parseFilePath(targetPath)
-                if (!segments || segments.length === 0) {
-                  sendJson(res, fail(20004))
-                  return
-                }
-                const parent = findMockNode(userId, segments)
-                if (!parent || parent.is_file) {
-                  sendJson(res, fail(20004))
-                  return
-                }
-                const kids = parent.filesVOS ?? []
-                const storedName = availableCopyName(
-                  kids.map((node) => node.fileName),
-                  uploadedName || 'upload.bin',
-                )
-                const stored = mockNode(storedName, true)
-                stored.length = fileBytes.length
-                parent.filesVOS = [...kids, stored]
-                const fullPath = `${FILE_PREFIX}/${[...segments, storedName].join('/')}`
-                mockFileBytes.set(fullPath, fileBytes)
-                session.path = fullPath
-                session.size = fileBytes.length
-              } else {
-                const prev = mockFileBytes.get(session.path) ?? new Uint8Array()
-                const merged = new Uint8Array(prev.length + fileBytes.length)
-                merged.set(prev, 0)
-                merged.set(fileBytes, prev.length)
-                mockFileBytes.set(session.path, merged)
-                session.size = merged.length
-                const segs = parseFilePath(session.path)
-                const node = segs ? findMockNode(userId, segs) : null
-                if (node?.is_file) {
-                  node.length = merged.length
-                }
+              const segments = parseFilePath(session.path)
+              if (!segments || segments.length < 2) {
+                sendJson(res, fail(20004))
+                return
               }
+              const parent = findMockNode(userId, segments.slice(0, -1))
+              if (!parent || parent.is_file) {
+                sendJson(res, fail(20004))
+                return
+              }
+              const fileName = segments[segments.length - 1]!
+              let node = findMockNode(userId, segments)
+              if (!node) {
+                node = mockNode(fileName, true)
+                parent.filesVOS = [...(parent.filesVOS ?? []), node]
+              }
+              const prev = mockFileBytes.get(session.path) ?? new Uint8Array()
+              const merged = new Uint8Array(prev.length + bytes.length)
+              merged.set(prev, 0)
+              merged.set(bytes, prev.length)
+              mockFileBytes.set(session.path, merged)
+              session.size = merged.length
+              node.length = merged.length
               sendJson(res, ok(null))
             })
             return
@@ -477,13 +471,40 @@ function mockApiPlugin(): Plugin {
                 sendJson(res, fail(20004))
                 return
               }
-              rows.push({ path: share.path, sharerId: share.sharerId, node: cloneNode(node) })
+              rows.push({
+                path: share.path,
+                sharerId: share.sharerId,
+                shareKey,
+                node: cloneNode(node),
+              })
               mockShared.set(userId, rows)
               sendJson(res, ok({
                 fileListVO: toBackendFileListVO(node),
                 sharerId: share.sharerId,
                 sharedFilePath: share.path,
               }))
+              return
+            }
+
+            if (url === '/api/file/deleteSharedFile') {
+              const shareKey = String(parsed.link ?? '').trim()
+              const share = mockShareLinks.get(shareKey)
+              if (!share) {
+                sendJson(res, fail(30001))
+                return
+              }
+              if (share.sharerId !== userId) {
+                sendJson(res, fail(20001))
+                return
+              }
+              mockShareLinks.delete(shareKey)
+              for (const [shareeId, rows] of mockShared) {
+                mockShared.set(
+                  shareeId,
+                  rows.filter((row) => row.shareKey !== shareKey),
+                )
+              }
+              sendJson(res, ok(null))
               return
             }
 
