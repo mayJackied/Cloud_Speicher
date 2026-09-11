@@ -518,6 +518,9 @@ public class FileServiceImpl implements FileService {
 
     @Override
     public Result<Void> deleteSharedFile(String link) {
+        if (!Objects.equals(UserContext.getUserId(), sharedFileMapper.selectOne(new LambdaQueryWrapper<SharedFile>().eq(SharedFile::getShareLink, link)).getSharerId())){
+            return Result.error(ErrorCode.NO_PERMISSION);
+        }
         int i = sharedFileMapper.delete(new LambdaQueryWrapper<SharedFile>().eq(SharedFile::getShareLink, link));
         shareFileLinkMapper.deleteById(link);
         if (i == 0){
