@@ -11,6 +11,7 @@ import com.zuantou.mapper.user.UserMapper;
 import com.zuantou.pojo.*;
 import com.zuantou.common.utils.UserContext;
 import com.zuantou.common.properties.MyValFileProperties;
+import com.zuantou.pojo.dto.LinkDTO;
 import com.zuantou.pojo.vo.*;
 import com.zuantou.pojo.dto.file.*;
 import com.zuantou.pojo.dto.file.continueableDTO.CloseUploadDTO;
@@ -315,9 +316,9 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
-    public Result<String> initUpload(String uploadFilePath) {
+    public Result<String> initUpload(InitUploadDTO initUploadDTO) {
         String uuid = UUID.randomUUID().toString();
-        continuableUploadMapper.insert(new ContinuableUpload(uuid, uploadFilePath));
+        continuableUploadMapper.insert(new ContinuableUpload(uuid, initUploadDTO.getUploadFilePath()));
         return Result.success(uuid);
     }
 
@@ -495,7 +496,8 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
-    public Result<SharedFileVO> addShareFileByShareLink(String link) {
+    public Result<SharedFileVO> addShareFileByShareLink(LinkDTO linkDTO) {
+        String link = linkDTO.getLink();
         ShareFileLink shareFileLink = shareFileLinkMapper.selectById(link);
         if (shareFileLink == null || shareFileLink.getExpireTime() < System.currentTimeMillis()) {
             return Result.error(ErrorCode.SHARE_LINK_INVALID);
@@ -517,7 +519,8 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
-    public Result<Void> deleteSharedFile(String link) {
+    public Result<Void> deleteSharedFile(LinkDTO linkDTO) {
+        String link = linkDTO.getLink();
         if (!Objects.equals(UserContext.getUserId(), sharedFileMapper.selectOne(new LambdaQueryWrapper<SharedFile>().eq(SharedFile::getShareLink, link)).getSharerId())){
             return Result.error(ErrorCode.NO_PERMISSION);
         }

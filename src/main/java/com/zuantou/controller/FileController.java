@@ -1,5 +1,6 @@
 package com.zuantou.controller;
 
+import com.zuantou.pojo.dto.LinkDTO;
 import com.zuantou.pojo.vo.*;
 import com.zuantou.pojo.dto.file.*;
 import com.zuantou.pojo.dto.file.continueableDTO.CloseUploadDTO;
@@ -75,8 +76,8 @@ public class FileController {
     }
 
     @PostMapping("/initUpload")
-    public Result<String> initUpload(@RequestBody String uploadFilePath){
-        return fileService.initUpload(uploadFilePath);
+    public Result<String> initUpload(@RequestBody InitUploadDTO initUploadDTO){
+        return fileService.initUpload(initUploadDTO);
     }
 
     @PostMapping("/continuableUploadFile")
@@ -125,12 +126,12 @@ public class FileController {
     }
 
     @PostMapping("/addShareFileByShareLink")
-    public Result<SharedFileVO> addShareFileByShareLink(@RequestBody String link){
+    public Result<SharedFileVO> addShareFileByShareLink(@RequestBody LinkDTO link){
         return fileService.addShareFileByShareLink(link);
     }
 
     @PostMapping("/deleteSharedFile")
-    public Result<Void> deleteSharedFile(@RequestBody String link){
+    public Result<Void> deleteSharedFile(@RequestBody LinkDTO link){
         return fileService.deleteSharedFile(link);
     }
 

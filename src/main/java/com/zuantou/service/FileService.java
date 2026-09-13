@@ -1,5 +1,6 @@
 package com.zuantou.service;
 
+import com.zuantou.pojo.dto.LinkDTO;
 import com.zuantou.pojo.vo.*;
 import com.zuantou.pojo.dto.file.*;
 import com.zuantou.pojo.dto.file.continueableDTO.CloseUploadDTO;
@@ -34,7 +35,7 @@ public interface FileService {
 
     Result<Void> restoreFile(DeleteFileDTO deleteFileDTO);
 
-    Result<String> initUpload(String uploadFilePath);
+    Result<String> initUpload(InitUploadDTO initUploadDTO);
 
     Result<Void> continuableUpload(ContinuableUploadDTO continuableUploadDTO, HttpServletRequest request);
 
@@ -54,7 +55,7 @@ public interface FileService {
 
     Result<CreatShareLinkVO> creatShareLink(CreatShareLinkDTO creatShareLinkDTO);
 
-    Result<SharedFileVO> addShareFileByShareLink(String link);
+    Result<SharedFileVO> addShareFileByShareLink(LinkDTO link);
 
-    Result<Void> deleteSharedFile( String link);
+    Result<Void> deleteSharedFile(LinkDTO link);
 }
