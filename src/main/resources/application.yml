@@ -1,4 +1,4 @@
-host: 127.0.0.1
+host: 8.130.215.175
 
 server:
   port: 8080
@@ -6,14 +6,10 @@ spring:
   application:
     name: claude_Speicher
   datasource:
-    url: jdbc:mysql://${host}/Cloud_Speicher?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://${host}/cloud_disk?useUnicode=true&characterEncoding=UTF-8&autoReconnect=true&serverTimezone=Asia/Shanghai
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: root
-    password: "0317"
-  servlet:
-    multipart:
-      max-file-size: 10GB
-      max-request-size: 10GB
+    password: "RRFDTTVEcjx4iAw.mysql"
 
 mybatis-plus:
   mapper-locations: classpath:/mapper/*.xml
@@ -28,8 +24,8 @@ mybatis-plus:
 my:
   val:
     file:
-      path: "../files"
-      publicPath: "../files/public"
+      path: "./files"
+      publicPath: "./files/public"
       recycleBinName: "recycle_bin"
       retainTime: 7 #Days
 

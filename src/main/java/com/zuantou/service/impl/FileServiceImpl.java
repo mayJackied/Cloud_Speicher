@@ -562,7 +562,7 @@ public class FileServiceImpl implements FileService {
             }
         }
 
-        if (!target.startsWith(userPath) && !target.startsWith(publicPath)) {
+        if (!target.startsWith(userPath) && !target.startsWith(publicPath) && !(operationType == IN_PUBLIC_PATH_OR_SHARED_FILE_ALLOWED_OPERATION)) {
             return ErrorCode.NO_PERMISSION;
         }
 

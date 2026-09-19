@@ -31,7 +31,7 @@ public class JwtFilter implements Filter {
         HttpServletResponse response = (HttpServletResponse) servletResponse;
 
         String url = request.getRequestURI();
-        if (url.contains("/checkUserName") || url.contains("/login") || url.contains("/register") || url.contains("swagger-ui") || url.contains("/v3/api-docs")){
+        if (url.contains("/checkUserName") || url.contains("/login") || url.contains("/register")){
             filterChain.doFilter(servletRequest, servletResponse);
             return;
         }

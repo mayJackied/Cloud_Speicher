@@ -7,6 +7,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 
 
 import java.io.*;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -175,5 +178,96 @@ public class test {
 
 
 
+    @Test
+    public void http() throws Exception{
+        URL url = new URL("http://localhost:8080/api/file/test");
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+
+        conn.setRequestMethod("GET");
+        conn.setRequestProperty("token", "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoxLCJleHAiOjE3OTEzNjQyMTl9.HdS5yYjgUnfWS2YYgslnV-nlQkuzjlnaqiWWjtvKCe4");
+
+        System.out.println("Response Code: " + conn.getResponseCode());
+
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                System.out.println(line);
+            }
+        }
+
+        conn.disconnect();
+    }
+    private String jwt = "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoxNSwiZXhwIjoxNzkyMzc4NTQyfQ.nb475PxhSKcA0a7y0N4w7MKTRACuXAVYuTdAWbvDPME";
+    @Test
+    public void  login()throws Exception{
+        URL url = new URL("http://8.130.215.175:8080/api/user/login");
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+
+        conn.setRequestMethod("POST");
+        conn.setRequestProperty("Content-Type", "application/json");
+        conn.setDoOutput(true);
+
+        String json = """
+                {
+                    "name": "zuantou",
+                    "password": "a1593572684a"
+                }
+                """;
+
+        try (OutputStream out = conn.getOutputStream()) {
+            out.write(json.getBytes(StandardCharsets.UTF_8));
+        }
+
+        System.out.println("Response Code: " + conn.getResponseCode());
+
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                System.out.println(line);
+            }
+        }
+
+        conn.disconnect();
+    }
+
+    @Test
+    public void addFile()throws Exception{
+        URL url = new URL("http://8.130.215.175:8080/api/file/addFile");
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+
+        conn.setRequestMethod("POST");
+        conn.setRequestProperty("Content-Type", "application/json");
+        conn.setRequestProperty("token", jwt);
+        conn.setDoOutput(true);
+
+        String json = """
+                {
+                    "is_file": true,
+                    "path": "./files/15/test.txt"
+                }
+                """;
+
+        try (OutputStream out = conn.getOutputStream()) {
+            out.write(json.getBytes(StandardCharsets.UTF_8));
+        }
+
+        System.out.println("Response Code: " + conn.getResponseCode());
+
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(
+                        conn.getResponseCode() >= 400
+                                ? conn.getErrorStream()
+                                : conn.getInputStream(),
+                        StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                System.out.println(line);
+            }
+        }
+
+        conn.disconnect();
+    }
 
 }

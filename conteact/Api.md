@@ -129,11 +129,11 @@ VO: Result<CreatShareLinkVO>
 
 *add_share_file_by_share_link*
 post: /api/file/addShareFileByShareLink
-DTO: String link        Tipp: 分享链接
+DTO: LinkDTO link        Tipp: 分享链接
 VO: Result<SharedFileVO>
 
 *delete_shared_file*
 post: /api/file/deleteSharedFile
-DTO: String link
+DTO: LinkDTO link
 VO: Result<Void>
 }
