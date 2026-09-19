@@ -21,6 +21,19 @@ describe('zipArchive', () => {
     expect(blob.type).toBe('application/zip')
   })
 
+  it.each([
+    '../secret.txt',
+    '资料/../../secret.txt',
+    '/absolute.txt',
+    'C:\\temp\\secret.txt',
+    '资料//空段.txt',
+    './relative.txt',
+  ])('拒绝可能逃逸解压目录的 ZIP 条目名：%s', (name) => {
+    expect(() =>
+      createZipArchive([{ name, data: new TextEncoder().encode('payload') }]),
+    ).toThrow('ZIP_ENTRY_NAME_ILLEGAL')
+  })
+
   it('并发映射限制活跃任务并保持结果顺序', async () => {
     let active = 0
     let peak = 0

@@ -141,7 +141,7 @@ VO: `Void`
 旧整包 `POST /api/file/uploadFile` **已移除**。前端 `uploadFile()` 现封装为：`initUpload` → 一次 `continuableUploadFile` → `closeUpload`。
 
 *init_upload*　POST `/api/file/initUpload`
-DTO: JSON 字符串目标文件完整路径，例如 `"../files/8/video.mp4"`
+DTO: `InitUploadDTO { uploadFilePath }`（完整目标文件路径，例如 `../files/8/video.mp4`）
 VO: `Result<String>`（uploadKey / UUID）；后端在会话表同时记录目标路径
 
 *continuable_upload_file*　POST `/api/file/continuableUploadFile?uploadKey=&targetPath=`
@@ -429,7 +429,7 @@ VO: `Void`
 Legacy `POST /api/file/uploadFile` is **removed**. Frontend `uploadFile()` now wraps `initUpload` → one `continuableUploadFile` → `closeUpload`.
 
 *init_upload*　POST `/api/file/initUpload`
-Body: JSON string containing the complete destination file path, e.g. `"../files/8/video.mp4"`
+Body: `InitUploadDTO { uploadFilePath }` — complete destination file path, e.g. `../files/8/video.mp4`
 VO: `Result<String>` (uploadKey)
 
 *continuable_upload_file*　POST `/api/file/continuableUploadFile?uploadKey=&targetPath=`

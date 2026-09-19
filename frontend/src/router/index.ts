@@ -41,13 +41,13 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/admin',
     redirect: { name: 'admin-invitations' },
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, requiresAdmin: true },
   },
   {
     path: '/admin/invitations',
     name: 'admin-invitations',
     component: () => import('@/views/admin/Invitations.vue'),
-    meta: { requiresAuth: true, hideChrome: true },
+    meta: { requiresAuth: true, requiresAdmin: true, hideChrome: true },
   },
 ]
 

@@ -98,8 +98,8 @@ describe('trash → reupload → restore (mock)', () => {
     const { token, userId } = await login()
     const folder = `TF_${Date.now().toString(36)}`
     const fileName = 'SAME.TXT'
-    const dir = `../files/${userId}/${folder}`
-    const bin = `../files/${userId}/recycle_bin`
+    const dir = `./files/${userId}/${folder}`
+    const bin = `./files/${userId}/recycle_bin`
 
     let res = await fetch(`${base}/api/file/addFile`, {
       method: 'POST',

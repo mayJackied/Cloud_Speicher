@@ -22,7 +22,7 @@
     <p>失败 → {{ failText }}</p>
 
     <h2>4. 打接口</h2>
-    <p>离线走 mock；在线经 Vite 转到 8.130.215.175:8080。login / register / checkUserName 不带 JWT；发邀请码 GET，只带头 token（用户 id 在 JWT 里）。getFiles 也要 token，成功应是 public + 自己的房间两棵树。</p>
+    <p>离线走 mock；在线经 Vite 转到 {{ onlineTarget }}。login / register / checkUserName 不带 JWT；发邀请码 GET，只带头 token（用户 id 在 JWT 里）。getFiles 也要 token，成功应是 public + 自己的房间两棵树。</p>
     <p>当前会话：{{ sessionText }}。发码成功路径：用户名填 admin，先探测 login，再点 creatInviteCode。非管理员应得到 code=10002。</p>
     <p>
       <label>用户名 <input v-model="name" /></label>
@@ -72,7 +72,7 @@ const modeModel = computed({
   get: () => mode.value,
   set: (value: 'offline' | 'online') => setMode(value),
 })
-const onlineTarget = 'http://8.130.215.175:8080'
+const onlineTarget = import.meta.env.VITE_DEV_API_TARGET || 'http://127.0.0.1:8080'
 const name = ref('newuser')
 const password = ref('password1')
 const inviteCode = ref('K7M2Q9')

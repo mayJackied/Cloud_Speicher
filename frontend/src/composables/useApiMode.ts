@@ -8,6 +8,9 @@ export type { ApiMode }
 const MODE_KEY = 'apiMode'
 
 function readMode(): ApiMode {
+  if (import.meta.env.PROD) {
+    return 'online'
+  }
   return localStorage.getItem(MODE_KEY) === 'online' ? 'online' : 'offline'
 }
 
@@ -20,6 +23,9 @@ apply(mode.value)
 
 export function useApiMode() {
   function setMode(next: ApiMode) {
+    if (import.meta.env.PROD) {
+      return
+    }
     mode.value = next
     localStorage.setItem(MODE_KEY, next)
     apply(next)

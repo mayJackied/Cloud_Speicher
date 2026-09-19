@@ -79,7 +79,28 @@ function writer(size: number) {
 }
 
 function normalizedName(name: string): string {
-  return name.replace(/\\/g, '/').replace(/^\/+/, '')
+  const normalized = name.replace(/\\/g, '/')
+  const directory = normalized.endsWith('/')
+  if (
+    !normalized ||
+    normalized.startsWith('/') ||
+    /^[A-Za-z]:/.test(normalized) ||
+    /[\u0000-\u001f]/.test(normalized)
+  ) {
+    throw new Error('ZIP_ENTRY_NAME_ILLEGAL')
+  }
+
+  const segments = normalized.split('/')
+  if (directory) {
+    segments.pop()
+  }
+  if (
+    segments.length === 0 ||
+    segments.some((segment) => !segment || segment === '.' || segment === '..')
+  ) {
+    throw new Error('ZIP_ENTRY_NAME_ILLEGAL')
+  }
+  return `${segments.join('/')}${directory ? '/' : ''}`
 }
 
 /** 创建无压缩 ZIP。避免引入依赖，并兼容所有支持 Blob 的现代浏览器。 */
@@ -94,7 +115,8 @@ export function createZipArchive(entries: readonly ZipArchiveEntry[]): Blob {
   let localOffset = 0
 
   for (const entry of entries) {
-    const name = encoder.encode(normalizedName(entry.name))
+    const entryName = normalizedName(entry.name)
+    const name = encoder.encode(entryName)
     const size = entry.data.byteLength
     if (size > UINT32_MAX || localOffset > UINT32_MAX) {
       throw new Error('ZIP_SIZE_LIMIT')
@@ -132,7 +154,7 @@ export function createZipArchive(entries: readonly ZipArchiveEntry[]): Blob {
     central.u16(0)
     central.u16(0)
     central.u16(0)
-    central.u32(entry.name.endsWith('/') ? 0x10 : 0)
+    central.u32(entryName.endsWith('/') ? 0x10 : 0)
     central.u32(localOffset)
     centralParts.push(central.bytes, name)
 

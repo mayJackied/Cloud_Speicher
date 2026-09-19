@@ -2,10 +2,7 @@
 
 @font-face {
   font-family: 'Natto';
-  src:
-    url('../fonts/natto.otf') format('opentype'),
-    url('../fonts/natto.woff2') format('woff2'),
-    url('../fonts/natto.ttf') format('truetype');
+  src: url('../fonts/natto.otf') format('opentype');
   font-weight: 400;
   font-style: normal;
   font-display: swap;

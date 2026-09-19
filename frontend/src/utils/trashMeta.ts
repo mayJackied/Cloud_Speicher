@@ -1,10 +1,10 @@
-import { FILE_STORAGE_PREFIX } from '@/types/file'
+import { FILE_STORAGE_PREFIX, storagePathSegments } from '@/types/file'
 
 /** 放在 recycle_bin 里，记录「回收站内文件名 → 删除前位置」（尽力同步；以 localStorage 为准）。 */
 export const TRASH_META_NAME = '_trash_meta.json'
 
 export type TrashMetaEntry = {
-  /** 删除前所在目录，如 `../files/8/docs` */
+  /** 删除前所在目录，如 `./files/8/docs` */
   from: string
   /** 删除前的文件名 */
   name: string
@@ -49,23 +49,17 @@ export function serializeTrashMeta(meta: TrashMeta): string {
   return JSON.stringify(meta)
 }
 
-/** `../files/8/docs` → `['8','docs']` */
+/** `./files/8/docs`（及旧 `../files/...`）→ `['8','docs']` */
 export function serverPathSegments(path: string): string[] | null {
-  const normalized = path.replace(/\\/g, '/').replace(/\/+$/, '')
-  if (normalized === FILE_STORAGE_PREFIX) {
-    return []
-  }
-  const prefix = `${FILE_STORAGE_PREFIX}/`
-  if (!normalized.startsWith(prefix)) {
-    return null
-  }
-  return normalized.slice(prefix.length).split('/').filter(Boolean)
+  return storagePathSegments(path)
 }
 
 export function isUnderUserRoom(path: string, userId: number): boolean {
-  const normalized = path.replace(/\\/g, '/').replace(/\/+$/, '')
-  const prefix = `${FILE_STORAGE_PREFIX}/${userId}`
-  return normalized === prefix || normalized.startsWith(`${prefix}/`)
+  const segments = storagePathSegments(path)
+  if (!segments || segments.length === 0) {
+    return false
+  }
+  return segments[0] === String(userId)
 }
 
 export function trashMetaStorageKey(userId: number): string {

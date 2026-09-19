@@ -125,8 +125,36 @@ export function isLegalFileName(name: string): boolean {
   )
 }
 
-/** 后端 `my.val.file.path`，getFiles 只回 fileName，操作接口要拼这个前缀。 */
-export const FILE_STORAGE_PREFIX = '../files'
+/** 后端 `my.val.file.path`，getFiles 只回 fileName，操作接口要拼这个前缀（现网为 `./files`）。 */
+export const FILE_STORAGE_PREFIX = './files'
+
+/** 旧版相对前缀；读缓存/旧路径时仍识别。 */
+export const LEGACY_FILE_STORAGE_PREFIX = '../files'
+
+/** 把 `../files/...` 归一成当前 `./files/...`。 */
+export function canonicalizeServerPath(path: string): string {
+  const normalized = path.replace(/\\/g, '/').replace(/\/+$/, '')
+  if (normalized === LEGACY_FILE_STORAGE_PREFIX) {
+    return FILE_STORAGE_PREFIX
+  }
+  if (normalized.startsWith(`${LEGACY_FILE_STORAGE_PREFIX}/`)) {
+    return `${FILE_STORAGE_PREFIX}${normalized.slice(LEGACY_FILE_STORAGE_PREFIX.length)}`
+  }
+  return normalized
+}
+
+/** `./files/8/docs` 或旧 `../files/8/docs` → `['8','docs']` */
+export function storagePathSegments(path: string): string[] | null {
+  const normalized = canonicalizeServerPath(path)
+  if (normalized === FILE_STORAGE_PREFIX) {
+    return []
+  }
+  const prefix = `${FILE_STORAGE_PREFIX}/`
+  if (!normalized.startsWith(prefix)) {
+    return null
+  }
+  return normalized.slice(prefix.length).split('/').filter(Boolean)
+}
 
 export function toServerPath(segments: readonly string[]): string {
   return [FILE_STORAGE_PREFIX, ...segments].join('/')

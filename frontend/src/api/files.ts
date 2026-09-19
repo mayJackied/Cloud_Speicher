@@ -43,7 +43,7 @@ export function renameFile(dto: RenameFileDTO) {
 }
 
 export function initUpload(uploadFilePath: string) {
-  return api.post<Result<string>>('/file/initUpload', JSON.stringify(uploadFilePath))
+  return api.post<Result<string>>('/file/initUpload', { uploadFilePath })
 }
 
 export function continuableUploadFile(

@@ -64,7 +64,7 @@
     </div>
     <div class="drive-side__links">
       <router-link to="/drive/settings">{{ t('drive.settings') }}</router-link>
-      <router-link to="/admin/invitations">{{ t('drive.invite') }}</router-link>
+      <router-link v-if="auth.isAdmin" to="/admin/invitations">{{ t('drive.invite') }}</router-link>
       <button type="button" @click="emit('logout')">{{ t('drive.signOut') }}</button>
     </div>
   </aside>

@@ -57,115 +57,122 @@
           :class="{ 'is-compact': prefs.transferView === 'compact' }"
           aria-live="polite"
         >
-          <p v-if="!filtered.length" class="transfer-empty">{{ t('transfers.empty') }}</p>
-          <article
-            v-for="task in filtered"
-            :key="task.id"
-            class="transfer-card"
-            :class="{ 'is-compact': prefs.transferView === 'compact' }"
-          >
-            <template v-if="prefs.transferView === 'compact'">
-              <div class="transfer-compact">
-                <span class="transfer-direction">
-                  {{ task.direction === 'upload' ? '↑' : '↓' }}
-                </span>
-                <h2>{{ task.fileName }}</h2>
-                <strong>{{ transferProgress(task) }}%</strong>
-              </div>
-            </template>
-            <template v-else>
-              <div class="transfer-card__top">
-                <div class="transfer-name">
+          <p v-if="!displayRows.length" class="transfer-empty">{{ t('transfers.empty') }}</p>
+          <template v-for="row in displayRows" :key="row.key">
+            <h3 v-if="row.kind === 'heading'" class="transfer-section__title">{{ row.label }}</h3>
+            <div v-else-if="row.kind === 'divider'" class="transfer-divider" role="separator" />
+            <article
+              v-else
+              class="transfer-card"
+              :class="{ 'is-compact': prefs.transferView === 'compact' }"
+            >
+              <template v-if="prefs.transferView === 'compact'">
+                <div class="transfer-compact">
                   <span class="transfer-direction">
-                    {{ task.direction === 'upload' ? '↑' : '↓' }}
+                    {{ row.task.direction === 'upload' ? '↑' : '↓' }}
                   </span>
-                  <div>
-                    <h2>{{ task.fileName }}</h2>
-                    <p>{{ statusLabel(task.status) }}</p>
+                  <h2>{{ row.task.fileName }}</h2>
+                  <strong>{{ transferProgress(row.task) }}%</strong>
+                </div>
+              </template>
+              <template v-else>
+                <div class="transfer-card__top">
+                  <div class="transfer-name">
+                    <span class="transfer-direction">
+                      {{ row.task.direction === 'upload' ? '↑' : '↓' }}
+                    </span>
+                    <div>
+                      <h2>{{ row.task.fileName }}</h2>
+                      <p>{{ statusLabel(row.task.status) }}</p>
+                    </div>
                   </div>
+                  <strong>{{ transferProgress(row.task) }}%</strong>
                 </div>
-                <strong>{{ transferProgress(task) }}%</strong>
-              </div>
 
-              <div class="transfer-progress">
-                <i :style="{ width: `${transferProgress(task)}%` }" />
-              </div>
-
-              <div class="transfer-meta">
-                <span>{{ formatBytes(task.transferredBytes) }} / {{ formatBytes(task.totalBytes) }}</span>
-                <span>{{ task.speedBps > 0 ? `${formatBytes(task.speedBps)}/s` : '—' }}</span>
-                <span v-if="task.remainingSeconds != null && task.status === 'running'">
-                  {{ t('transfers.remaining', { time: formatDuration(task.remainingSeconds) }) }}
-                </span>
-              </div>
-
-              <dl>
-                <div>
-                  <dt>{{ t('transfers.source') }}</dt>
-                  <dd>{{ task.sourcePath }}</dd>
+                <div class="transfer-progress">
+                  <i :style="{ width: `${transferProgress(row.task)}%` }" />
                 </div>
-                <div>
-                  <dt>{{ t('transfers.destination') }}</dt>
-                  <dd>{{ task.saveLocation }}</dd>
-                </div>
-                <div>
-                  <dt>{{ t('transfers.requestedAt') }}</dt>
-                  <dd>{{ formatStampSecond(task.createdAt) }}</dd>
-                </div>
-                <div>
-                  <dt>{{ t('transfers.finishedAt') }}</dt>
-                  <dd>{{ formatStampSecond(task.completedAt) }}</dd>
-                </div>
-              </dl>
 
-              <p v-if="task.errorMessage" class="transfer-error">
-                {{ task.errorMessage === 'SOURCE_FILE_MISMATCH' ? t('transfers.sourceMismatch') : task.errorMessage }}
-              </p>
+                <div class="transfer-meta">
+                  <span>{{ formatBytes(row.task.transferredBytes) }} / {{ formatBytes(row.task.totalBytes) }}</span>
+                  <span>{{ row.task.speedBps > 0 ? `${formatBytes(row.task.speedBps)}/s` : '—' }}</span>
+                  <span v-if="row.task.remainingSeconds != null && row.task.status === 'running'">
+                    {{ t('transfers.remaining', { time: formatDuration(row.task.remainingSeconds) }) }}
+                  </span>
+                </div>
 
-              <div class="transfer-actions">
-                <button
-                  v-if="['running', 'queued', 'waiting_backend'].includes(task.status)"
-                  type="button"
-                  @click="transfers.pause(task.id)"
-                >{{ t('transfers.pause') }}</button>
-                <button
-                  v-if="task.status === 'paused'"
-                  type="button"
-                  @click="transfers.resume(task.id)"
-                >{{ t('transfers.resume') }}</button>
-                <button
-                  v-if="task.status === 'needs_source'"
-                  type="button"
-                  @click="chooseSource(task.id)"
-                >{{ t('transfers.chooseSource') }}</button>
-                <button
-                  v-if="task.status === 'needs_destination'"
-                  type="button"
-                  @click="chooseDestination(task.id, task.fileName)"
-                >{{ t('transfers.chooseDestination') }}</button>
-                <button
-                  v-if="task.status === 'needs_destination'"
-                  type="button"
-                  @click="transfers.useBrowserDestination(task.id, t('transfers.defaultDownloads'))"
-                >{{ t('transfers.browserDestination') }}</button>
-                <button
-                  v-if="['failed', 'canceled'].includes(task.status)"
-                  type="button"
-                  @click="transfers.retry(task.id)"
-                >{{ t('transfers.retry') }}</button>
-                <button
-                  v-if="!['completed', 'canceled'].includes(task.status)"
-                  type="button"
-                  @click="transfers.cancel(task.id)"
-                >{{ t('transfers.cancel') }}</button>
-                <button
-                  v-if="['completed', 'canceled'].includes(task.status)"
-                  type="button"
-                  @click="transfers.remove(task.id)"
-                >{{ t('transfers.remove') }}</button>
-              </div>
-            </template>
-          </article>
+                <dl>
+                  <div>
+                    <dt>{{ t('transfers.source') }}</dt>
+                    <dd>{{ row.task.sourcePath }}</dd>
+                  </div>
+                  <div>
+                    <dt>{{ t('transfers.destination') }}</dt>
+                    <dd>{{ row.task.saveLocation }}</dd>
+                  </div>
+                  <div>
+                    <dt>{{ t('transfers.requestedAt') }}</dt>
+                    <dd>{{ formatStampSecond(row.task.createdAt) }}</dd>
+                  </div>
+                  <div>
+                    <dt>{{ t('transfers.finishedAt') }}</dt>
+                    <dd>{{ formatStampSecond(row.task.completedAt) }}</dd>
+                  </div>
+                </dl>
+
+                <p v-if="row.task.errorMessage" class="transfer-error">
+                  {{
+                    row.task.errorMessage === 'SOURCE_FILE_MISMATCH'
+                      ? t('transfers.sourceMismatch')
+                      : row.task.errorMessage
+                  }}
+                </p>
+
+                <div class="transfer-actions">
+                  <button
+                    v-if="['running', 'queued', 'waiting_backend'].includes(row.task.status)"
+                    type="button"
+                    @click="transfers.pause(row.task.id)"
+                  >{{ t('transfers.pause') }}</button>
+                  <button
+                    v-if="row.task.status === 'paused'"
+                    type="button"
+                    @click="transfers.resume(row.task.id)"
+                  >{{ t('transfers.resume') }}</button>
+                  <button
+                    v-if="row.task.status === 'needs_source'"
+                    type="button"
+                    @click="chooseSource(row.task.id)"
+                  >{{ t('transfers.chooseSource') }}</button>
+                  <button
+                    v-if="row.task.status === 'needs_destination'"
+                    type="button"
+                    @click="chooseDestination(row.task.id, row.task.fileName)"
+                  >{{ t('transfers.chooseDestination') }}</button>
+                  <button
+                    v-if="row.task.status === 'needs_destination'"
+                    type="button"
+                    @click="transfers.useBrowserDestination(row.task.id, t('transfers.defaultDownloads'))"
+                  >{{ t('transfers.browserDestination') }}</button>
+                  <button
+                    v-if="['failed', 'canceled'].includes(row.task.status)"
+                    type="button"
+                    @click="transfers.retry(row.task.id)"
+                  >{{ t('transfers.retry') }}</button>
+                  <button
+                    v-if="!['completed', 'canceled'].includes(row.task.status)"
+                    type="button"
+                    @click="transfers.cancel(row.task.id)"
+                  >{{ t('transfers.cancel') }}</button>
+                  <button
+                    v-if="['completed', 'canceled'].includes(row.task.status)"
+                    type="button"
+                    @click="transfers.remove(row.task.id)"
+                  >{{ t('transfers.remove') }}</button>
+                </div>
+              </template>
+            </article>
+          </template>
         </section>
         <input ref="fallbackInput" class="transfer-hidden" type="file" @change="onFallbackSource" />
       </main>
@@ -185,12 +192,26 @@ import { useI18n } from '@/composables/useI18n'
 import { useAuthStore } from '@/stores/auth'
 import { usePrefsStore } from '@/stores/prefs'
 import { transferProgress, useTransferStore } from '@/stores/transfers'
-import type { FileSystemFileHandleLike, TransferFilter, TransferStatus } from '@/types/transfer'
+import type {
+  FileSystemFileHandleLike,
+  TransferFilter,
+  TransferStatus,
+  TransferTask,
+} from '@/types/transfer'
 import { formatBytes, formatStampSecond } from '@/utils/formatFile'
 
 type PickerWindow = Window & {
   showOpenFilePicker?: (options?: object) => Promise<FileSystemFileHandleLike[]>
   showSaveFilePicker?: (options?: object) => Promise<FileSystemFileHandleLike>
+}
+
+type DisplayRow =
+  | { kind: 'heading'; key: string; label: string }
+  | { kind: 'divider'; key: string }
+  | { kind: 'task'; key: string; task: TransferTask }
+
+function isFinishedStatus(status: TransferStatus) {
+  return status === 'completed' || status === 'canceled'
 }
 
 const { t } = useI18n()
@@ -232,6 +253,29 @@ const filtered = computed(() => {
     return transfers.tasks.filter((task) => task.direction === filter.value)
   }
   return transfers.tasks
+})
+
+const displayRows = computed((): DisplayRow[] => {
+  const tasks = filtered.value
+  if (!tasks.length) {
+    return []
+  }
+  // 「已完成」筛选不再拆段；其它筛选：进行中在上、已完成/已取消在下。
+  if (filter.value === 'completed') {
+    return tasks.map((task) => ({ kind: 'task' as const, key: task.id, task }))
+  }
+  const active = tasks.filter((task) => !isFinishedStatus(task.status))
+  const finished = tasks.filter((task) => isFinishedStatus(task.status))
+  if (!active.length || !finished.length) {
+    return tasks.map((task) => ({ kind: 'task' as const, key: task.id, task }))
+  }
+  return [
+    { kind: 'heading', key: 'heading-active', label: t('transfers.sectionActive') },
+    ...active.map((task) => ({ kind: 'task' as const, key: task.id, task })),
+    { kind: 'divider', key: 'divider-done' },
+    { kind: 'heading', key: 'heading-done', label: t('transfers.sectionDone') },
+    ...finished.map((task) => ({ kind: 'task' as const, key: task.id, task })),
+  ]
 })
 
 const statusKeys: Record<TransferStatus, string> = {
@@ -417,6 +461,22 @@ onMounted(() => {
   display: grid;
   gap: 0.75rem;
   padding-top: 1rem;
+}
+
+.transfer-section__title {
+  margin: 0.35rem 0 0;
+  color: var(--arc-chem);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.transfer-divider {
+  height: 0;
+  margin: 0.55rem 0 0.15rem;
+  border: 0;
+  border-top: 1px solid rgb(235 244 246 / 28%);
 }
 
 .transfer-empty {

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit -p tsconfig.app.json && vite build",
+    "deploy": "powershell -NoProfile -ExecutionPolicy Bypass -File ../deploy/deploy-frontend.ps1",
     "preview": "vite preview",
     "test": "vitest",
     "lint": "eslint ."

@@ -45,7 +45,6 @@ async function onCreate() {
     if (data.code === ErrorCode.OK) {
       const vo = data.data as CreatInviteCodeVO | null
       if (vo?.inviteCode) {
-        auth.setAdmin(true)
         code.value = vo.inviteCode
         message.value = '已生成'
         return

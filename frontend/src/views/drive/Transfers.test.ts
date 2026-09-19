@@ -37,20 +37,20 @@ describe('传输列表界面接入', () => {
 
   it('提供筛选、状态信息和完整任务操作', () => {
     expect(transfersView).toContain('v-for="option in filters"')
-    expect(transfersView).toContain('task.speedBps')
-    expect(transfersView).toContain('task.remainingSeconds')
-    expect(transfersView).toContain('transfers.pause(task.id)')
-    expect(transfersView).toContain('transfers.resume(task.id)')
-    expect(transfersView).toContain('transfers.cancel(task.id)')
-    expect(transfersView).toContain('chooseSource(task.id)')
-    expect(transfersView).toContain('chooseDestination(task.id, task.fileName)')
+    expect(transfersView).toContain('row.task.speedBps')
+    expect(transfersView).toContain('row.task.remainingSeconds')
+    expect(transfersView).toContain('transfers.pause(row.task.id)')
+    expect(transfersView).toContain('transfers.resume(row.task.id)')
+    expect(transfersView).toContain('transfers.cancel(row.task.id)')
+    expect(transfersView).toContain('chooseSource(row.task.id)')
+    expect(transfersView).toContain('chooseDestination(row.task.id, row.task.fileName)')
   })
 
   it('传输卡片展示申请与完成时间戳', () => {
     expect(transfersView).toContain("t('transfers.requestedAt')")
     expect(transfersView).toContain("t('transfers.finishedAt')")
-    expect(transfersView).toContain('formatStampSecond(task.createdAt)')
-    expect(transfersView).toContain('formatStampSecond(task.completedAt)')
+    expect(transfersView).toContain('formatStampSecond(row.task.createdAt)')
+    expect(transfersView).toContain('formatStampSecond(row.task.completedAt)')
   })
 
   it('可在精简与详细显示模式间切换', () => {
@@ -59,6 +59,13 @@ describe('传输列表界面接入', () => {
     expect(transfersView).toContain("t('transfers.viewCompact')")
     expect(transfersView).toContain("t('transfers.viewDetail')")
     expect(transfersView).toContain('transfer-compact')
+  })
+
+  it('全部/上传/下载列表把进行中与已完成分段显示', () => {
+    expect(transfersView).toContain('displayRows')
+    expect(transfersView).toContain('transfer-divider')
+    expect(transfersView).toContain("t('transfers.sectionActive')")
+    expect(transfersView).toContain("t('transfers.sectionDone')")
   })
 
   it('共享频道已接生成和接收分享码', () => {

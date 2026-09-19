@@ -68,7 +68,7 @@ describe('useDriveFiles 回收站还原', () => {
     api.downloadFile.mockResolvedValue({
       data: new Blob([
         JSON.stringify({
-          [storedName]: { from: '../files/8/docs', name: 'report.txt' },
+          [storedName]: { from: './files/8/docs', name: 'report.txt' },
         }),
       ]),
       headers: { 'content-type': 'application/octet-stream' },
@@ -87,17 +87,17 @@ describe('useDriveFiles 回收站还原', () => {
     await drive.restoreItem(trashed!)
 
     expect(api.downloadFile).toHaveBeenCalledWith({
-      downloadFilePath: '../files/8/recycle_bin/_trash_meta.json',
+      downloadFilePath: './files/8/recycle_bin/_trash_meta.json',
       downloadType: 0,
       downloadedSize: 0,
     })
     expect(api.moveFile).toHaveBeenCalledWith({
-      path: '../files/8/recycle_bin/report.txt',
-      targetDir: '../files/8/docs',
+      path: './files/8/recycle_bin/report.txt',
+      targetDir: './files/8/docs',
       fileHandle: 0,
     })
     expect(api.moveFile).not.toHaveBeenCalledWith(
-      expect.objectContaining({ targetDir: '../files/8' }),
+      expect.objectContaining({ targetDir: './files/8' }),
     )
   })
 

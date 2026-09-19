@@ -12,7 +12,12 @@
         <button type="button" :class="{ 'is-on': tab === 'display' }" @click="tab = 'display'">
           {{ t('settings.display') }}
         </button>
-        <button type="button" :class="{ 'is-on': tab === 'connection' }" @click="tab = 'connection'">
+        <button
+          v-if="isDev"
+          type="button"
+          :class="{ 'is-on': tab === 'connection' }"
+          @click="tab = 'connection'"
+        >
           {{ t('settings.connection') }}
         </button>
         <button type="button" :class="{ 'is-on': tab === 'account' }" @click="tab = 'account'">
@@ -77,7 +82,7 @@
           </div>
         </section>
 
-        <section v-else-if="tab === 'connection'">
+        <section v-else-if="isDev && tab === 'connection'">
           <p class="set__lead">{{ t('settings.connectionHint') }}</p>
           <p class="set__lead">{{ t('drive.sync') }}: {{ syncLabel }} · {{ pillLabel }}</p>
           <div class="set__langs">
@@ -125,6 +130,7 @@ import { ErrorCode, messageForCode } from '@/types/errorCode'
 
 type Tab = 'about' | 'language' | 'display' | 'connection' | 'account'
 
+const isDev = import.meta.env.DEV
 const auth = useAuthStore()
 const prefs = usePrefsStore()
 const router = useRouter()

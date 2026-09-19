@@ -22,8 +22,8 @@
         </p>
       </form>
       <p><router-link to="/register">{{ t('auth.requestAccess') }}</router-link></p>
-      <p class="arc-hint">{{ t('auth.modeHint') }}</p>
-      <ApiModeSwitch />
+      <p v-if="isDev" class="arc-hint">{{ t('auth.modeHint') }}</p>
+      <ApiModeSwitch v-if="isDev" />
       <LocaleSwitch />
     </main>
   </ArchiveFrame>
@@ -42,6 +42,7 @@ import { describeResult, isResultShape, readLoginVO } from '@/dev/contract'
 import { useAuthStore } from '@/stores/auth'
 import { ErrorCode, messageForCode } from '@/types/errorCode'
 
+const isDev = import.meta.env.DEV
 const name = ref('')
 const password = ref('')
 const message = ref('')

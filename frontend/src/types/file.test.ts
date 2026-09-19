@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   bytesOfNode,
+  canonicalizeServerPath,
   isLegalFileName,
   joinServerPath,
   readFileCatalogVO,
@@ -51,14 +52,14 @@ describe('FilesVO / path', () => {
             fileListVOS: null,
           },
           sharerId: 7,
-          sharedFilePath: '../files/7/shared.txt',
+          sharedFilePath: './files/7/shared.txt',
         },
       ],
     })
     expect(catalog?.fileListVOS[0]?.fileName).toBe('public')
     expect(catalog?.sharedFileVOS[0]).toMatchObject({
       sharerId: 7,
-      sharedFilePath: '../files/7/shared.txt',
+      sharedFilePath: './files/7/shared.txt',
       fileListVO: { fileName: 'shared.txt', isFile: true },
     })
   })
@@ -68,14 +69,19 @@ describe('FilesVO / path', () => {
     expect(readFilesVOList([{ fileName: 'a' }])).toBeNull()
   })
 
-  it('操作 path 拼 ../files + 面包屑', () => {
-    expect(toServerPath(['public', 'document', 'a.txt'])).toBe('../files/public/document/a.txt')
-    expect(toServerPath(['9'])).toBe('../files/9')
+  it('操作 path 拼 ./files + 面包屑', () => {
+    expect(toServerPath(['public', 'document', 'a.txt'])).toBe('./files/public/document/a.txt')
+    expect(toServerPath(['9'])).toBe('./files/9')
   })
 
   it('joinServerPath 给 rename/download 用，上传 path 仍是文件夹', () => {
-    expect(joinServerPath('../files/8', 'pic.jpg')).toBe('../files/8/pic.jpg')
-    expect(joinServerPath('../files/8/pic.jpg', 'pic.jpg')).toBe('../files/8/pic.jpg')
+    expect(joinServerPath('./files/8', 'pic.jpg')).toBe('./files/8/pic.jpg')
+    expect(joinServerPath('./files/8/pic.jpg', 'pic.jpg')).toBe('./files/8/pic.jpg')
+  })
+
+  it('canonicalizeServerPath 兼容旧双点前缀', () => {
+    expect(canonicalizeServerPath('../files/8/a.txt')).toBe('./files/8/a.txt')
+    expect(canonicalizeServerPath('./files/8/a.txt')).toBe('./files/8/a.txt')
   })
 
   it('文件名规则', () => {

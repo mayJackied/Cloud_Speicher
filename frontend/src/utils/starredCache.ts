@@ -1,7 +1,9 @@
+import { canonicalizeServerPath } from '@/types/file'
+
 const PREFIX = 'arc-starred-paths:'
 
 function normalized(path: string): string {
-  return path.trim().replace(/\\/g, '/')
+  return canonicalizeServerPath(path.trim())
 }
 
 export function readStarredCache(userId: number): string[] {

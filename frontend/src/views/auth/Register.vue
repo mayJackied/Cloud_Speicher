@@ -55,8 +55,8 @@
         </p>
       </form>
       <p><router-link to="/login">{{ t('auth.goSignIn') }}</router-link></p>
-      <p class="arc-hint">{{ t('auth.modeHint') }}</p>
-      <ApiModeSwitch />
+      <p v-if="isDev" class="arc-hint">{{ t('auth.modeHint') }}</p>
+      <ApiModeSwitch v-if="isDev" />
       <LocaleSwitch />
     </main>
   </ArchiveFrame>
@@ -76,6 +76,7 @@ import { useAuthStore } from '@/stores/auth'
 import { NAME_PATTERN, PASSWORD_PATTERN } from '@/types/constraints'
 import { ErrorCode, messageForCode } from '@/types/errorCode'
 
+const isDev = import.meta.env.DEV
 const loading = ref(false)
 const submitted = ref(false)
 const message = ref('')

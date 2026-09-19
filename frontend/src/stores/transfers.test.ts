@@ -31,8 +31,8 @@ function task(patch: Partial<TransferTask> = {}): TransferTask {
     nextOffset: 25,
     chunkSize: 10,
     sourcePath: 'large.bin',
-    targetPath: '../files/1',
-    saveLocation: '../files/1',
+    targetPath: './files/1',
+    saveLocation: './files/1',
     saveStrategy: 'browser-download',
     speedBps: 0,
     remainingSeconds: null,
@@ -94,11 +94,11 @@ describe('断点传输状态', () => {
     transferApi.finishUpload.mockResolvedValue({ data: { code: 1, data: null } })
 
     const store = useTransferStore()
-    await store.enqueueUpload(new File(['payload'], 'large.bin'), '../files/1')
+    await store.enqueueUpload(new File(['payload'], 'large.bin'), './files/1')
     await Promise.resolve()
     await Promise.resolve()
 
-    expect(transferApi.allocateUploadKey).toHaveBeenCalledWith('../files/1/large.bin')
+    expect(transferApi.allocateUploadKey).toHaveBeenCalledWith('./files/1/large.bin')
     expect(transferApi.pushUploadChunk).toHaveBeenCalledTimes(1)
     expect(transferApi.pushUploadChunk.mock.calls[0]?.[0]).toEqual(
       expect.objectContaining({ offset: 0 }),
@@ -121,7 +121,7 @@ describe('断点传输状态', () => {
     const store = useTransferStore()
     const queued = await store.enqueueUpload(
       new File([new Uint8Array(10 * 1024 * 1024)], 'large.bin'),
-      '../files/1',
+      './files/1',
     )
     expect(store.tasks[0]?.status).toBe('running')
     expect(store.tasks[0]?.completedAt).toBeUndefined()
@@ -147,7 +147,7 @@ describe('断点传输状态', () => {
       removeItem: vi.fn(),
     })
     const store = useTransferStore()
-    const queued = await store.enqueueUpload(new File(['payload'], 'a.txt'), '../files/1')
+    const queued = await store.enqueueUpload(new File(['payload'], 'a.txt'), './files/1')
     store.cancel(queued.id)
     await vi.runAllTimersAsync()
     expect(store.tasks[0]?.status).toBe('canceled')

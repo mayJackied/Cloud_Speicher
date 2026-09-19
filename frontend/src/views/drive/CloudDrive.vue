@@ -295,7 +295,7 @@ import { useTransferStore } from '@/stores/transfers'
 import { useApiLink } from '@/composables/useApiLink'
 import { useDriveFiles } from '@/composables/useDriveFiles'
 import { useI18n } from '@/composables/useI18n'
-import { bytesOfNode, toServerPath, type FilesVO } from '@/types/file'
+import { bytesOfNode, isLegalFileName, toServerPath, type FilesVO } from '@/types/file'
 import type { FileSystemFileHandleLike } from '@/types/transfer'
 import { ErrorCode, messageForCode } from '@/types/errorCode'
 import { kindOf, needsPosterFrame, typeLabel } from '@/utils/fileKind'
@@ -922,6 +922,11 @@ async function onFileInput(event: Event) {
 }
 
 async function queueUpload(file: File, handle?: FileSystemFileHandleLike) {
+  const finalName = decodeFileName(file.name)
+  if (!isLegalFileName(finalName)) {
+    message.value = messageForCode(ErrorCode.FILE_NAME_ILLEGAL)
+    return
+  }
   await transfers.enqueueUpload(file, toServerPath(crumbs.value), handle)
   message.value = t('transfers.queuedNotice')
 }

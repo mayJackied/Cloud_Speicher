@@ -19,31 +19,31 @@ beforeEach(() => {
 })
 
 describe('starredCache', () => {
-  it('按用户保存并规范化去重', () => {
+  it('按用户保存并规范化去重，旧 ../files 升到 ./files', () => {
     writeStarredCache(2, ['../files/2/a.txt', '..\\files\\2\\a.txt'])
-    expect(readStarredCache(2)).toEqual(['../files/2/a.txt'])
+    expect(readStarredCache(2)).toEqual(['./files/2/a.txt'])
     expect(readStarredCache(3)).toEqual([])
   })
 
   it('加星和取消会持久更新', () => {
-    addStarredCache(2, '../files/2/a.txt')
-    addStarredCache(2, '../files/2/b.txt')
-    removeStarredCache(2, '../files/2/a.txt')
-    expect(readStarredCache(2)).toEqual(['../files/2/b.txt'])
+    addStarredCache(2, './files/2/a.txt')
+    addStarredCache(2, './files/2/b.txt')
+    removeStarredCache(2, './files/2/a.txt')
+    expect(readStarredCache(2)).toEqual(['./files/2/b.txt'])
   })
 
   it('重命名同步收藏路径，含目录前缀子项', () => {
     expect(
       remapStarredPaths(
-        ['../files/2/a.txt', '../files/2/docs/b.txt', '../files/2/other.txt'],
-        '../files/2/docs',
-        '../files/2/notes',
+        ['./files/2/a.txt', './files/2/docs/b.txt', './files/2/other.txt'],
+        './files/2/docs',
+        './files/2/notes',
       ),
-    ).toEqual(['../files/2/a.txt', '../files/2/notes/b.txt', '../files/2/other.txt'])
+    ).toEqual(['./files/2/a.txt', './files/2/notes/b.txt', './files/2/other.txt'])
 
-    writeStarredCache(2, ['../files/2/pic.jpg'])
-    expect(remapStarredCache(2, '../files/2/pic.jpg', '../files/2/微信图片.JPG')).toEqual([
-      '../files/2/微信图片.JPG',
+    writeStarredCache(2, ['./files/2/pic.jpg'])
+    expect(remapStarredCache(2, './files/2/pic.jpg', './files/2/微信图片.JPG')).toEqual([
+      './files/2/微信图片.JPG',
     ])
   })
 })

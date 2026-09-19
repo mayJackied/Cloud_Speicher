@@ -34,6 +34,9 @@ function readToken(): string {
 }
 
 export function readApiMode(): 'online' | 'offline' {
+  if (import.meta.env.PROD) {
+    return 'online'
+  }
   try {
     return localStorage.getItem('apiMode') === 'online' ? 'online' : 'offline'
   } catch {

@@ -25,11 +25,11 @@ import { fileBytesFromStored } from '@/dev/multipart'
 import { mimeFromName } from '@/utils/fileKind'
 import {
   FileHandle,
-  FILE_STORAGE_PREFIX,
   childrenOf,
   isLegalFileName,
   joinServerPath,
   readFileCatalogVO,
+  storagePathSegments,
   toServerPath,
   bytesOfNode,
   type FilesVO,
@@ -784,13 +784,10 @@ export function useDriveFiles() {
   }
 
   function nodeAtServerDir(dir: string): FilesVO[] | null {
-    const normalized = dir.replace(/\\/g, '/').replace(/\/+$/, '')
-    const prefix = `${FILE_STORAGE_PREFIX}/`
-    if (normalized !== FILE_STORAGE_PREFIX && !normalized.startsWith(prefix)) {
+    const segments = storagePathSegments(dir)
+    if (segments === null) {
       return null
     }
-    const segments =
-      normalized === FILE_STORAGE_PREFIX ? [] : normalized.slice(prefix.length).split('/').filter(Boolean)
     let nodes = roots.value
     for (const name of segments) {
       const current = nodes.find((node) => node.fileName === name)
@@ -803,13 +800,8 @@ export function useDriveFiles() {
   }
 
   function findServerNode(path: string): FilesVO | null {
-    const normalized = path.replace(/\\/g, '/').replace(/\/+$/, '')
-    const prefix = `${FILE_STORAGE_PREFIX}/`
-    if (!normalized.startsWith(prefix)) {
-      return null
-    }
-    const segments = normalized.slice(prefix.length).split('/').filter(Boolean)
-    if (segments.length === 0) {
+    const segments = storagePathSegments(path)
+    if (!segments || segments.length === 0) {
       return null
     }
     let nodes = roots.value
@@ -947,15 +939,10 @@ export function useDriveFiles() {
   }
 
   function findNodeByServerPath(path: string): FilesVO | null {
-    const normalized = path.replace(/\\/g, '/')
-    const prefix = `${FILE_STORAGE_PREFIX}/`
-    if (!normalized.startsWith(prefix) && normalized !== FILE_STORAGE_PREFIX) {
+    const segs = storagePathSegments(path)
+    if (segs === null) {
       return null
     }
-    const segs =
-      normalized === FILE_STORAGE_PREFIX
-        ? []
-        : normalized.slice(prefix.length).split('/').filter(Boolean)
     return findNodeAt(segs)
   }
 

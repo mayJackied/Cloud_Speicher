@@ -5,7 +5,7 @@ import { dropJsonContentType, isFormDataBody } from './client'
 describe('multipart 请求头', () => {
   it('认出 FormData', () => {
     expect(isFormDataBody(new FormData())).toBe(true)
-    expect(isFormDataBody({ path: '../files/8' })).toBe(false)
+    expect(isFormDataBody({ path: './files/8' })).toBe(false)
     expect(isFormDataBody('{"path":"x"}')).toBe(false)
   })
 

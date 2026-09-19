@@ -5,7 +5,7 @@ describe('multipart file extract', () => {
   it('抽出 name=file 的二进制体', () => {
     const jpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3])
     const body = new TextEncoder().encode(
-      '------bound\r\nContent-Disposition: form-data; name="path"\r\n\r\n../files/2\r\n------bound\r\nContent-Disposition: form-data; name="file"; filename="a.jpg"\r\nContent-Type: image/jpeg\r\n\r\n',
+      '------bound\r\nContent-Disposition: form-data; name="path"\r\n\r\n./files/2\r\n------bound\r\nContent-Disposition: form-data; name="file"; filename="a.jpg"\r\nContent-Type: image/jpeg\r\n\r\n',
     )
     const tail = new TextEncoder().encode('\r\n------bound--\r\n')
     const raw = new Uint8Array(body.length + jpeg.length + tail.length)

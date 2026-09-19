@@ -60,6 +60,9 @@ lerna-debug.log*
 .env.local
 .env.*.local
 
+# 本机部署账号（主机 / SSH 用户 / 私钥路径）
+deploy/deploy.env
+
 # 本地前端目标与进度（不上传）
 前端开发.md
 

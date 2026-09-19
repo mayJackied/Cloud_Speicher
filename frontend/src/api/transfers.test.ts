@@ -15,10 +15,12 @@ describe('现网断点传输与星标适配层', () => {
     })
   })
 
-  it('initUpload 走 POST 并发送目标文件完整路径', () => {
+  it('initUpload 走 POST 并发送 InitUploadDTO', () => {
     const post = vi.spyOn(api, 'post').mockResolvedValue({} as never)
-    void initUpload('../files/8/large.bin')
-    expect(post).toHaveBeenCalledWith('/file/initUpload', '"../files/8/large.bin"')
+    void initUpload('./files/8/large.bin')
+    expect(post).toHaveBeenCalledWith('/file/initUpload', {
+      uploadFilePath: './files/8/large.bin',
+    })
   })
 
   it('continuableUpload 用原始字节流发送断点后的全部剩余内容', async () => {
@@ -27,7 +29,7 @@ describe('现网断点传输与星标适配层', () => {
 
     const result = await pushUploadChunk({
       uploadKey: 'k1',
-      targetPath: '../files/1',
+      targetPath: './files/1',
       file,
       offset: 5,
     })
@@ -36,7 +38,7 @@ describe('现网断点传输与星标适配层', () => {
     expect(post.mock.calls[0]?.[2]).toEqual(
       expect.objectContaining({
         timeout: 0,
-        params: { uploadKey: 'k1', targetPath: '../files/1' },
+        params: { uploadKey: 'k1', targetPath: './files/1' },
         headers: { 'Content-Type': 'application/octet-stream' },
       }),
     )
@@ -48,7 +50,7 @@ describe('现网断点传输与星标适配层', () => {
     const post = vi.spyOn(api, 'post').mockResolvedValue({ data: { code: 1, data: null } } as never)
     await continuableUploadFile({
       uploadKey: 'k1',
-      targetPath: '../files/1',
+      targetPath: './files/1',
       file: new Blob(['x']),
     })
     expect(post).toHaveBeenCalledWith(
@@ -56,7 +58,7 @@ describe('现网断点传输与星标适配层', () => {
       expect.any(Blob),
       expect.objectContaining({
         timeout: 0,
-        params: { uploadKey: 'k1', targetPath: '../files/1' },
+        params: { uploadKey: 'k1', targetPath: './files/1' },
       }),
     )
   })
@@ -64,14 +66,14 @@ describe('现网断点传输与星标适配层', () => {
   it('下载使用 ContinuableDownloadDTO', () => {
     const post = vi.spyOn(api, 'post').mockResolvedValue({} as never)
     void downloadFile({
-      downloadFilePath: '../files/7/a.bin',
+      downloadFilePath: './files/7/a.bin',
       downloadedSize: 10,
       downloadType: 1,
     })
     expect(post).toHaveBeenCalledWith(
       '/file/downloadFile',
       {
-        downloadFilePath: '../files/7/a.bin',
+        downloadFilePath: './files/7/a.bin',
         downloadedSize: 10,
         downloadType: 1,
       },
@@ -81,13 +83,13 @@ describe('现网断点传输与星标适配层', () => {
 
   it('进度下载与关闭上传、收藏列表端点正确', () => {
     const post = vi.spyOn(api, 'post').mockResolvedValue({} as never)
-    void downloadContinuableWithProgress({ path: '../files/7/a.bin', downloadedSize: 0 })
+    void downloadContinuableWithProgress({ path: './files/7/a.bin', downloadedSize: 0 })
     void closeUpload({ uploadKey: 'key-1' })
     void getStarredFiles()
     expect(post).toHaveBeenNthCalledWith(
       1,
       '/file/downloadFile',
-      expect.objectContaining({ downloadFilePath: '../files/7/a.bin', downloadType: 0 }),
+      expect.objectContaining({ downloadFilePath: './files/7/a.bin', downloadType: 0 }),
       expect.objectContaining({ responseType: 'blob' }),
     )
     expect(post).toHaveBeenNthCalledWith(2, '/file/closeUpload', { uploadKey: 'key-1' })

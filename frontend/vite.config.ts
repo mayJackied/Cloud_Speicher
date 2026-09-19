@@ -1,7 +1,7 @@
 import { fileURLToPath, URL } from 'node:url'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import vue from '@vitejs/plugin-vue'
-import { defineConfig, type Plugin } from 'vite'
+import { defineConfig, loadEnv, type Plugin } from 'vite'
 import { fileBytesFromStored } from './src/dev/multipart'
 import { mimeFromName } from './src/utils/fileKind'
 import { decodeFileName, availableCopyName } from './src/utils/text'
@@ -87,7 +87,7 @@ type MockNode = {
   filesVOS: MockNode[] | null
 }
 
-const FILE_PREFIX = '../files'
+const FILE_PREFIX = './files'
 
 function mockNode(fileName: string, isFile: boolean, children: MockNode[] | null = null): MockNode {
   return { fileName, length: isFile ? 1 : 0, lastModified: Date.now(), is_file: isFile, filesVOS: children }
@@ -158,14 +158,17 @@ function toBackendFileListVO(node: MockNode): Record<string, unknown> {
 
 function parseFilePath(path: string): string[] | null {
   const normalized = path.replace(/\\/g, '/')
-  if (normalized === FILE_PREFIX) {
-    return []
+  const roots = [FILE_PREFIX, '../files']
+  for (const root of roots) {
+    if (normalized === root) {
+      return []
+    }
+    const prefix = `${root}/`
+    if (normalized.startsWith(prefix)) {
+      return normalized.slice(prefix.length).split('/').filter(Boolean)
+    }
   }
-  const prefix = `${FILE_PREFIX}/`
-  if (!normalized.startsWith(prefix)) {
-    return null
-  }
-  return normalized.slice(prefix.length).split('/').filter(Boolean)
+  return null
 }
 
 function findMockNode(userId: number, segments: string[]): MockNode | null {
@@ -259,7 +262,12 @@ function mockApiPlugin(): Plugin {
               const raw = new TextDecoder().decode(bytes)
               let uploadFilePath = ''
               try {
-                uploadFilePath = String(JSON.parse(raw))
+                const body: unknown = JSON.parse(raw || '{}')
+                if (typeof body === 'string') {
+                  uploadFilePath = body
+                } else if (body && typeof body === 'object') {
+                  uploadFilePath = String((body as { uploadFilePath?: unknown }).uploadFilePath ?? '')
+                }
               } catch {
                 uploadFilePath = raw.trim().replace(/^"|"$/g, '')
               }
@@ -908,33 +916,35 @@ function mockApiPlugin(): Plugin {
   }
 }
 
-export default defineConfig({
-  plugins: [vue(), mockApiPlugin()],
-  resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, fileURLToPath(new URL('.', import.meta.url)), '')
+  const proxyTarget = env.VITE_DEV_API_TARGET || 'http://127.0.0.1:8080'
+
+  return {
+    plugins: [vue(), mockApiPlugin()],
+    resolve: {
+      alias: {
+        '@': fileURLToPath(new URL('./src', import.meta.url)),
+      },
     },
-  },
-  server: {
-    port: 5173,
-    fs: {
-      allow: ['..'],
-    },
-    proxy: {
-      '/api': {
-        target: 'http://8.130.215.175:8080',
-        changeOrigin: true,
-        timeout: 0,
-        proxyTimeout: 0,
-        configure(proxy) {
-          proxy.on('proxyReq', (proxyReq, req) => {
-            const type = req.headers['content-type']
-            if (typeof type === 'string' && type.includes('multipart/form-data')) {
-              proxyReq.setHeader('Content-Type', type)
-            }
-          })
+    server: {
+      port: 5173,
+      proxy: {
+        '/api': {
+          target: proxyTarget,
+          changeOrigin: true,
+          timeout: 0,
+          proxyTimeout: 0,
+          configure(proxy) {
+            proxy.on('proxyReq', (proxyReq, req) => {
+              const type = req.headers['content-type']
+              if (typeof type === 'string' && type.includes('multipart/form-data')) {
+                proxyReq.setHeader('Content-Type', type)
+              }
+            })
+          },
         },
       },
     },
-  },
+  }
 })
