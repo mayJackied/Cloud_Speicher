@@ -1,6 +1,6 @@
 import { AxiosHeaders } from 'axios'
-import { describe, expect, it } from 'vitest'
-import { dropJsonContentType, isFormDataBody } from './client'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { dropJsonContentType, isFormDataBody, setSessionKickHook } from './client'
 
 describe('multipart 请求头', () => {
   it('认出 FormData', () => {
@@ -14,5 +14,20 @@ describe('multipart 请求头', () => {
     headers.set('Content-Type', 'application/json; charset=UTF-8')
     dropJsonContentType(headers)
     expect(headers.get('Content-Type')).toBeFalsy()
+  })
+})
+
+describe('会话失效钩子', () => {
+  afterEach(() => {
+    setSessionKickHook(null)
+  })
+
+  it('可注册并清空会话踢下线钩子', () => {
+    const hook = vi.fn()
+    setSessionKickHook(hook)
+    setSessionKickHook(null)
+    expect(hook).not.toHaveBeenCalled()
+    setSessionKickHook(hook)
+    expect(typeof hook).toBe('function')
   })
 })

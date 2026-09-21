@@ -52,8 +52,20 @@ function isSessionDead(data: unknown): boolean {
   return code === ErrorCode.NOT_LOGIN || code === ErrorCode.BLACKLISTED_JWT
 }
 
+/** 会话失效时清 Pinia 等内存态；由 main 在 createPinia 后注册，避免 client↔auth 循环依赖。 */
+let sessionKickHook: (() => void) | null = null
+
+export function setSessionKickHook(hook: (() => void) | null) {
+  sessionKickHook = hook
+}
+
 function kickToLogin() {
   sessionStorage.removeItem(SESSION_KEY)
+  try {
+    sessionKickHook?.()
+  } catch {
+    /* 清内存态失败仍要跳登录 */
+  }
   const path = window.location.pathname
   if (path.startsWith('/login') || path.startsWith('/register')) {
     return

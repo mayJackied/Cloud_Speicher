@@ -37,6 +37,9 @@ const destinationHandles = new Map<string, FileSystemFileHandleLike>()
 const timers = new Map<string, ReturnType<typeof setTimeout>>()
 const controllers = new Map<string, AbortController>()
 const persistenceQueues = new Map<string, Promise<void>>()
+/** 进度类写入节流；状态变更 / 终态立即落盘。 */
+const PERSIST_PROGRESS_MS = 1000
+const persistTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
 function transferId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -47,6 +50,17 @@ function transferId(): string {
 
 function isTerminal(status: TransferStatus): boolean {
   return status === 'completed' || status === 'canceled'
+}
+
+function needsImmediatePersist(status: TransferStatus): boolean {
+  return (
+    isTerminal(status) ||
+    status === 'paused' ||
+    status === 'failed' ||
+    status === 'needs_source' ||
+    status === 'needs_destination' ||
+    status === 'queued'
+  )
 }
 
 export function restoredTransferStatus(
@@ -86,6 +100,9 @@ export const useTransferStore = defineStore('transfers', () => {
   const tasks = ref<TransferTask[]>([])
   const hydrated = ref(false)
   const ownerId = ref(0)
+  const lastCompletedUpload = ref<{ id: string; targetPath: string; fileName: string; at: number } | null>(
+    null,
+  )
 
   const activeCount = computed(
     () =>
@@ -125,8 +142,42 @@ export const useTransferStore = defineStore('transfers', () => {
             : previous.completedAt,
     }
     tasks.value[index] = task
-    void persist(task)
+    if (enteringTerminal && task.status === 'completed' && task.direction === 'upload') {
+      lastCompletedUpload.value = {
+        id: task.id,
+        targetPath: task.targetPath,
+        fileName: task.fileName,
+        at: now,
+      }
+    }
+    const statusChanged = previous.status !== task.status
+    if (statusChanged || needsImmediatePersist(task.status)) {
+      const pending = persistTimers.get(id)
+      if (pending) {
+        clearTimeout(pending)
+        persistTimers.delete(id)
+      }
+      void persist(task)
+    } else {
+      scheduleProgressPersist(id)
+    }
     return task
+  }
+
+  function scheduleProgressPersist(id: string) {
+    if (persistTimers.has(id)) {
+      return
+    }
+    persistTimers.set(
+      id,
+      setTimeout(() => {
+        persistTimers.delete(id)
+        const current = taskById(id)
+        if (current) {
+          void persist(current)
+        }
+      }, PERSIST_PROGRESS_MS),
+    )
   }
 
   function persist(task: TransferTask): Promise<void> {
@@ -196,7 +247,6 @@ export const useTransferStore = defineStore('transfers', () => {
           (isTerminal(restoredStatus) ? record.task.updatedAt || record.task.createdAt : undefined),
       }
       tasks.value.push(task)
-      void persist(task)
     }
     hydrated.value = true
   }
@@ -206,6 +256,11 @@ export const useTransferStore = defineStore('transfers', () => {
     if (timer) {
       clearTimeout(timer)
       timers.delete(id)
+    }
+    const persistTimer = persistTimers.get(id)
+    if (persistTimer) {
+      clearTimeout(persistTimer)
+      persistTimers.delete(id)
     }
     controllers.get(id)?.abort()
     controllers.delete(id)
@@ -828,6 +883,7 @@ export const useTransferStore = defineStore('transfers', () => {
     tasks,
     hydrated,
     activeCount,
+    lastCompletedUpload,
     hydrate,
     enqueueUpload,
     enqueueDownload,

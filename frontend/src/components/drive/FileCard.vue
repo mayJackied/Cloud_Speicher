@@ -44,12 +44,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, defineAsyncComponent } from 'vue'
 import type { FilesVO } from '@/types/file'
 import { kindOf, type FileKind } from '@/utils/fileKind'
 import { formatBytes } from '@/utils/formatFile'
 import { archivalDisplayName } from '@/utils/text'
-import CyanotypeMedia from './CyanotypeMedia.vue'
+
+const CyanotypeMedia = defineAsyncComponent(() => import('./CyanotypeMedia.vue'))
 
 const props = defineProps<{
   item: FilesVO

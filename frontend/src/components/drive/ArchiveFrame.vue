@@ -17,6 +17,7 @@
 
 <script setup lang="ts">
 import { useI18n } from '@/composables/useI18n'
+import '@/assets/styles/fonts.css'
 import Timeboard from './Timeboard.vue'
 
 withDefaults(

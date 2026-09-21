@@ -50,19 +50,19 @@ describe('删除与压缩请求', () => {
     expect(post).toHaveBeenCalledWith('/file/creatShareLink', dto)
   })
 
-  it('接收分享发送 JSON 字符串字面量，而不是 link 对象或裸 key', () => {
+  it('接收分享发送 LinkDTO', () => {
     const post = vi.spyOn(api, 'post').mockResolvedValue({} as never)
 
     void addShareFileByShareLink('share-key')
 
-    expect(post).toHaveBeenCalledWith('/file/addShareFileByShareLink', '"share-key"')
+    expect(post).toHaveBeenCalledWith('/file/addShareFileByShareLink', { link: 'share-key' })
   })
 
-  it('撤销分享按 JSON 字符串发送 share key', () => {
+  it('撤销分享发送 LinkDTO', () => {
     const post = vi.spyOn(api, 'post').mockResolvedValue({} as never)
 
     void deleteSharedFile('share-key')
 
-    expect(post).toHaveBeenCalledWith('/file/deleteSharedFile', '"share-key"')
+    expect(post).toHaveBeenCalledWith('/file/deleteSharedFile', { link: 'share-key' })
   })
 })

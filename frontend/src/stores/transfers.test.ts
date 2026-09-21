@@ -109,6 +109,13 @@ describe('断点传输状态', () => {
     expect(store.tasks[0]?.status).toBe('completed')
     expect(store.tasks[0]?.serverTransferId).toBe('up-1')
     expect(store.tasks[0]?.completedAt).toEqual(expect.any(Number))
+    expect(store.lastCompletedUpload).toEqual(
+      expect.objectContaining({
+        id: store.tasks[0]?.id,
+        targetPath: './files/1',
+        fileName: 'large.bin',
+      }),
+    )
     expect(store.tasks[0]?.createdAt).toEqual(expect.any(Number))
   })
 

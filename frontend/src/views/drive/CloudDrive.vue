@@ -55,6 +55,10 @@
         </div>
       </header>
 
+      <p v-if="toastNote" class="arc__toast" role="status" aria-live="polite">
+        {{ toastNote }}
+      </p>
+
       <div class="arc__tools">
         <input
           v-model="query"
@@ -137,7 +141,7 @@
               :droppable="canDropInto(item)"
               @select="select(item, $event)"
               @open="openItem(item)"
-              @hover="void warmPreview(item)"
+              @hover="enqueuePreview(item)"
               @menu="(event) => openMenu(event, item)"
               @dragstart="onItemDragStart(item)"
               @dragend="onItemDragEnd"
@@ -286,7 +290,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { logout } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
@@ -295,13 +299,20 @@ import { useTransferStore } from '@/stores/transfers'
 import { useApiLink } from '@/composables/useApiLink'
 import { useDriveFiles } from '@/composables/useDriveFiles'
 import { useI18n } from '@/composables/useI18n'
-import { bytesOfNode, isLegalFileName, toServerPath, type FilesVO } from '@/types/file'
+import {
+  bytesOfNode,
+  canonicalizeServerPath,
+  isLegalFileName,
+  sanitizePathSegments,
+  toServerPath,
+  type FilesVO,
+} from '@/types/file'
 import type { FileSystemFileHandleLike } from '@/types/transfer'
 import { ErrorCode, messageForCode } from '@/types/errorCode'
 import { kindOf, needsPosterFrame, typeLabel } from '@/utils/fileKind'
 import { formatBytes, formatStamp } from '@/utils/formatFile'
+import { copyText } from '@/utils/clipboard'
 import { remapStarredPaths } from '@/utils/starredCache'
-import { stillFromBlob } from '@/utils/posterFrame'
 import { archivalDisplayName, decodeFileName } from '@/utils/text'
 import { canWriteInFolder } from '@/utils/driveAccess'
 import {
@@ -310,11 +321,7 @@ import {
   isSameFolder,
 } from '@/utils/moveDest'
 import { selectedCountMessage, updateSelection } from '@/utils/selection'
-import {
-  createZipArchive,
-  mapWithConcurrency,
-  type ZipArchiveEntry,
-} from '@/utils/zipArchive'
+import type { ZipArchiveEntry } from '@/utils/zipArchive'
 import {
   findRecycleBin,
   isInTrash,
@@ -322,11 +329,20 @@ import {
   isRecycleBinName,
 } from '@/utils/recycleBin'
 import FileCard from '@/components/drive/FileCard.vue'
-import CyanotypeMedia from '@/components/drive/CyanotypeMedia.vue'
 import ArchiveFrame from '@/components/drive/ArchiveFrame.vue'
 import DriveSidebar from '@/components/drive/DriveSidebar.vue'
 import FolderPicker from '@/components/drive/FolderPicker.vue'
 import Timeboard from '@/components/drive/Timeboard.vue'
+
+const CyanotypeMedia = defineAsyncComponent(() => import('@/components/drive/CyanotypeMedia.vue'))
+
+const PREVIEW_MAX_IMAGE_BYTES = 8 * 1024 * 1024
+const PREVIEW_MAX_VIDEO_BYTES = 2 * 1024 * 1024
+const PREVIEW_WARM_LIMIT = 12
+const PREVIEW_CONCURRENCY = 2
+const FOLDER_ZIP_MAX_FILES = 400
+const FOLDER_ZIP_MAX_BYTES = 200 * 1024 * 1024
+
 import ConcreteVoid from '@/components/drive/ConcreteVoid.vue'
 
 type Channel = 'mine' | 'public' | 'root' | 'trash' | 'starred' | 'shared'
@@ -494,7 +510,8 @@ const selectedIsStarred = computed(() => {
   if (inStarred.value) {
     return true
   }
-  return isStarredPath(itemSourcePath(item))
+  const path = itemSourcePath(item)
+  return Boolean(path && isStarredPath(path))
 })
 const selectedItems = computed(() =>
   listingItems.value.filter((item) => selectedNames.value.includes(item.fileName)),
@@ -559,6 +576,7 @@ const canDragItems = computed(
 const selNote = computed(
   () => message.value || offlineNote.value || (loading.value || busy.value ? t('drive.loading') : ''),
 )
+const toastNote = computed(() => message.value || offlineNote.value)
 
 const locationLabel = computed(() => {
   if (inStarred.value) {
@@ -720,12 +738,20 @@ function openShared() {
   clearSelection()
 }
 
-function itemSourcePath(item: FilesVO): string {
-  return (
-    (item as StarredRow).starPath ||
-    (item as SharedRow).sharedPath ||
-    toServerPath([...crumbs.value, item.fileName])
-  )
+function itemSourcePath(item: FilesVO): string | null {
+  const starred = (item as StarredRow).starPath
+  if (starred) {
+    return starred
+  }
+  const shared = (item as SharedRow).sharedPath
+  if (shared) {
+    return shared
+  }
+  const safe = sanitizePathSegments([...crumbs.value, item.fileName])
+  if (!safe) {
+    return null
+  }
+  return toServerPath(safe)
 }
 
 async function onStarSelected() {
@@ -734,6 +760,10 @@ async function onStarSelected() {
     return
   }
   const path = itemSourcePath(item)
+  if (!path) {
+    message.value = messageForCode(ErrorCode.FILE_NAME_ILLEGAL)
+    return
+  }
   const starred = await starItem(item, path)
   if (starred) {
     starredPaths.value = [...starredPaths.value, path]
@@ -745,15 +775,19 @@ async function onShareSelected() {
   if (!item || inTrash.value) {
     return
   }
+  const path = itemSourcePath(item)
+  if (!path) {
+    message.value = messageForCode(ErrorCode.FILE_NAME_ILLEGAL)
+    return
+  }
   // 后端 075193e 对 expireDuration=0 的默认时长分支写反，会生成立即过期的码。
-  const key = await createShareKey(itemSourcePath(item), 24)
+  const key = await createShareKey(path, 24)
   if (!key) {
     return
   }
-  try {
-    await navigator.clipboard.writeText(key)
+  if (await copyText(key)) {
     message.value = t('drive.shareCreatedCopied', { key })
-  } catch {
+  } else {
     message.value = t('drive.shareCreated', { key })
   }
 }
@@ -774,11 +808,17 @@ async function onUnstarSelected() {
   if (!item || !selectedIsStarred.value) {
     return
   }
+  const source = itemSourcePath(item)
   const path =
     (item as StarredRow).starPath ||
-    starredPaths.value.find((row) => normalizeServerPath(row) === normalizeServerPath(itemSourcePath(item))) ||
-    itemSourcePath(item)
+    (source
+      ? starredPaths.value.find(
+          (row) => normalizeServerPath(row) === normalizeServerPath(source),
+        )
+      : undefined) ||
+    source
   if (!path) {
+    message.value = messageForCode(ErrorCode.FILE_NAME_ILLEGAL)
     return
   }
   const removed = await unstarPath(path)
@@ -821,7 +861,7 @@ function select(item: FilesVO, event?: MouseEvent) {
   reveal.value = true
   menu.value = null
   if (selected.value) {
-    void warmPreview(selected.value)
+    enqueuePreview(selected.value)
   }
 }
 
@@ -847,21 +887,71 @@ function openMenu(event: MouseEvent, item: FilesVO) {
   menu.value = { x: event.clientX, y: event.clientY, item }
 }
 
-async function warmPreview(item: FilesVO) {
-  if (!prefs.thumbnails || previews[item.fileName]) {
+const previewInflight = new Set<string>()
+let previewActive = 0
+const previewQueue: FilesVO[] = []
+
+function previewByteLimit(kind: ReturnType<typeof kindOf>): number {
+  return kind === 'video' ? PREVIEW_MAX_VIDEO_BYTES : PREVIEW_MAX_IMAGE_BYTES
+}
+
+function enqueuePreview(item: FilesVO) {
+  if (!prefs.thumbnails || query.value.trim() || previews[item.fileName] || previewInflight.has(item.fileName)) {
     return
   }
   const kind = kindOf(item)
   if (kind !== 'image' && kind !== 'video') {
     return
   }
+  if (bytesOfNode(item) > previewByteLimit(kind)) {
+    return
+  }
+  previewQueue.push(item)
+  pumpPreviewQueue()
+}
+
+function pumpPreviewQueue() {
+  while (previewActive < PREVIEW_CONCURRENCY && previewQueue.length > 0) {
+    const next = previewQueue.shift()
+    if (!next) {
+      return
+    }
+    if (previews[next.fileName] || previewInflight.has(next.fileName)) {
+      continue
+    }
+    previewActive += 1
+    previewInflight.add(next.fileName)
+    void warmPreview(next).finally(() => {
+      previewInflight.delete(next.fileName)
+      previewActive = Math.max(0, previewActive - 1)
+      pumpPreviewQueue()
+    })
+  }
+}
+
+async function warmPreview(item: FilesVO) {
+  if (!prefs.thumbnails || previews[item.fileName] || query.value.trim()) {
+    return
+  }
+  const kind = kindOf(item)
+  if (kind !== 'image' && kind !== 'video') {
+    return
+  }
+  if (bytesOfNode(item) > previewByteLimit(kind)) {
+    return
+  }
   try {
-    const blob = await blobForItem(item, itemSourcePath(item))
-    if (!blob) {
+    const path = itemSourcePath(item)
+    if (!path) {
+      return
+    }
+    const blob = await blobForItem(item, path)
+    if (!blob || query.value.trim()) {
       return
     }
     if (needsPosterFrame(item)) {
       try {
+        const { stillFromBlob } = await import('@/utils/posterFrame')
         const still = await stillFromBlob(blob, kind === 'video' ? 'video' : 'image')
         previews[item.fileName] = URL.createObjectURL(still)
       } catch {
@@ -875,24 +965,29 @@ async function warmPreview(item: FilesVO) {
   }
 }
 
+let warmTimer = 0
 watch(
-  [visibleItems, () => prefs.thumbnails],
+  [visibleItems, () => prefs.thumbnails, query],
   () => {
-    if (!prefs.thumbnails) {
+    window.clearTimeout(warmTimer)
+    if (!prefs.thumbnails || query.value.trim()) {
+      previewQueue.length = 0
       return
     }
-    let n = 0
-    for (const item of visibleItems.value) {
-      const kind = kindOf(item)
-      if (kind !== 'image' && kind !== 'video') {
-        continue
+    warmTimer = window.setTimeout(() => {
+      let n = 0
+      for (const item of visibleItems.value) {
+        const kind = kindOf(item)
+        if (kind !== 'image' && kind !== 'video') {
+          continue
+        }
+        enqueuePreview(item)
+        n += 1
+        if (n >= PREVIEW_WARM_LIMIT) {
+          break
+        }
       }
-      void warmPreview(item)
-      n += 1
-      if (n >= 24) {
-        break
-      }
-    }
+    }, 220)
   },
 )
 
@@ -927,13 +1022,23 @@ async function queueUpload(file: File, handle?: FileSystemFileHandleLike) {
     message.value = messageForCode(ErrorCode.FILE_NAME_ILLEGAL)
     return
   }
-  await transfers.enqueueUpload(file, toServerPath(crumbs.value), handle)
-  message.value = t('transfers.queuedNotice')
+  const dir = sanitizePathSegments(crumbs.value)
+  if (!dir) {
+    message.value = messageForCode(ErrorCode.FILE_NAME_ILLEGAL)
+    return
+  }
+  await transfers.enqueueUpload(file, toServerPath(dir), handle)
+  message.value = t('transfers.uploadQueuedNotice', { name: finalName })
 }
 
 async function queueDownload(item: FilesVO) {
   if (!item.isFile) {
     await downloadFolder(item)
+    return
+  }
+  const path = itemSourcePath(item)
+  if (!path) {
+    message.value = messageForCode(ErrorCode.FILE_NAME_ILLEGAL)
     return
   }
   const picker = (window as PickerWindow).showSaveFilePicker
@@ -951,13 +1056,13 @@ async function queueDownload(item: FilesVO) {
   }
   await transfers.enqueueDownload({
     fileName: itemLabel(item),
-    sourcePath: itemSourcePath(item),
+    sourcePath: path,
     totalBytes: bytesOfNode(item),
     saveLocation,
     saveStrategy,
     destinationHandle: handle,
   })
-  message.value = t('transfers.queuedNotice')
+  message.value = t('transfers.downloadQueuedNotice', { name: itemLabel(item) })
 }
 
 async function downloadFolder(item: FilesVO) {
@@ -998,6 +1103,9 @@ async function downloadFolder(item: FilesVO) {
         modifiedAt: node.lastModified,
       })
       for (const child of node.filesVOS ?? []) {
+        if (!isLegalFileName(child.fileName)) {
+          throw new Error('PATH_SEGMENT_ILLEGAL')
+        }
         plan(
           child,
           `${sourcePath.replace(/\/+$/, '')}/${child.fileName}`,
@@ -1006,9 +1114,22 @@ async function downloadFolder(item: FilesVO) {
       }
     }
 
-    plan(item, itemSourcePath(item), folderName)
+    const folderRoot = itemSourcePath(item)
+    if (!folderRoot) {
+      message.value = messageForCode(ErrorCode.FILE_NAME_ILLEGAL)
+      return
+    }
+    plan(item, folderRoot, folderName)
+
+    const totalBytes = files.reduce((sum, file) => sum + bytesOfNode(file.node), 0)
+    if (files.length > FOLDER_ZIP_MAX_FILES || totalBytes > FOLDER_ZIP_MAX_BYTES) {
+      message.value = t('drive.folderDownloadTooLarge')
+      return
+    }
+
+    const { createZipArchive, mapWithConcurrency } = await import('@/utils/zipArchive')
     let completed = 0
-    const downloaded = await mapWithConcurrency(files, 4, async (file) => {
+    const downloaded = await mapWithConcurrency(files, 3, async (file) => {
       const blob = await blobForItem(file.node, file.sourcePath)
       if (!blob) {
         throw new Error('FOLDER_FILE_DOWNLOAD_FAILED')
@@ -1107,18 +1228,23 @@ async function dropMoveTo(dest: string[]) {
   if (!item || !canDragItems.value) {
     return
   }
-  if (isSameFolder(dest, crumbs.value)) {
+  const safeDest = sanitizePathSegments(dest)
+  if (!safeDest) {
+    message.value = messageForCode(ErrorCode.FILE_NAME_ILLEGAL)
     return
   }
-  if (isForbiddenMoveDest(dest, crumbs.value, item.fileName, item.isFile)) {
+  if (isSameFolder(safeDest, crumbs.value)) {
+    return
+  }
+  if (isForbiddenMoveDest(safeDest, crumbs.value, item.fileName, item.isFile)) {
     message.value = t('drive.cannotMoveHere')
     return
   }
-  if (!canWriteInFolder(destAccess(dest))) {
+  if (!canWriteInFolder(destAccess(safeDest))) {
     message.value = messageForCode(ErrorCode.NO_PERMISSION)
     return
   }
-  await moveItem(item, toServerPath(dest))
+  await moveItem(item, toServerPath(safeDest))
   if (!message.value) {
     clearSelection()
   }
@@ -1425,6 +1551,22 @@ async function applyChannelQuery() {
   }
 }
 
+watch(
+  () => transfers.lastCompletedUpload?.at,
+  async (at, previousAt) => {
+    const completed = transfers.lastCompletedUpload
+    if (!at || at === previousAt || !completed || inStarred.value || inShared.value) {
+      return
+    }
+    const currentPath = canonicalizeServerPath(toServerPath(crumbs.value))
+    if (canonicalizeServerPath(completed.targetPath) !== currentPath) {
+      return
+    }
+    await load({ quiet: true })
+    message.value = t('transfers.uploadCompletedNotice', { name: completed.fileName })
+  },
+)
+
 onMounted(() => {
   void transfers.hydrate()
   void load()
@@ -1437,6 +1579,8 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('mousedown', closeMenu)
   window.removeEventListener('keydown', onKey)
+  window.clearTimeout(warmTimer)
+  previewQueue.length = 0
   Object.values(previews).forEach((url) => URL.revokeObjectURL(url))
 })
 </script>
@@ -1728,6 +1872,24 @@ onUnmounted(() => {
 .arc__sel-note {
   margin-left: auto;
   color: var(--arc-chem);
+}
+
+.arc__toast {
+  position: fixed;
+  z-index: 30;
+  top: 1.1rem;
+  left: 50%;
+  max-width: min(44rem, calc(100vw - 2rem));
+  margin: 0;
+  padding: 0.65rem 1rem;
+  border: 1px solid rgb(151 255 211 / 52%);
+  background: rgb(5 17 21 / 92%);
+  color: var(--arc-lime);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+  transform: translateX(-50%);
+  box-shadow: 0 0.75rem 2rem rgb(0 0 0 / 28%);
 }
 
 .arc__browser {

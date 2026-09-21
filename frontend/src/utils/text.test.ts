@@ -20,19 +20,19 @@ describe('CJK / UTF-8 file names', () => {
   it('修回 UTF-8 被当成 Latin-1 的中文文件名', () => {
     const raw = String.fromCharCode(...new TextEncoder().encode('前端开发.md'))
     expect(repairUtf8Mojibake(raw)).toBe('前端开发.md')
-    expect(archivalDisplayName(raw)).toBe('前端开发.MD')
+    expect(archivalDisplayName(raw)).toBe('前端开发.md')
   })
 
   it('修回 UTF-8 被当成 Windows-1252 的中文文件名', () => {
     expect(repairUtf8Mojibake('é£Ž')).toBe('风')
     expect(repairUtf8Mojibake('é£Žæ™¯.png')).toBe('风景.png')
     expect(decodeFileName('%E9%A3%8E%E6%99%AF.png')).toBe('风景.png')
-    expect(archivalDisplayName('é£Žæ™¯.png')).toBe('风景.PNG')
+    expect(archivalDisplayName('é£Žæ™¯.png')).toBe('风景.png')
   })
 
   it('已经是正常中文的文件名不再二次乱解', () => {
     expect(decodeFileName('风景.png')).toBe('风景.png')
-    expect(archivalDisplayName('风景.png')).toBe('风景.PNG')
+    expect(archivalDisplayName('风景.png')).toBe('风景.png')
   })
 
   it('ASCII 临时上传名只保留安全扩展名', () => {
@@ -53,9 +53,9 @@ describe('CJK / UTF-8 file names', () => {
     expect(availableCopyName(['头疼.GIF'], '头疼.GIF')).toBe('头疼(1).GIF')
   })
 
-  it('拉丁字母大写，CJK 保持原样', () => {
-    expect(archivalDisplayName('notes 草稿.txt')).toBe('NOTES_草稿.TXT')
-    expect(archivalDisplayName('写真.jpg')).toBe('写真.JPG')
+  it('保留原文件名大小写和空格', () => {
+    expect(archivalDisplayName('notes 草稿.txt')).toBe('notes 草稿.txt')
+    expect(archivalDisplayName('写真.jpg')).toBe('写真.jpg')
   })
 
   it('解析 RFC 5987 filename*', () => {

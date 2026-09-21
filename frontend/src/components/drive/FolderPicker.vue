@@ -35,7 +35,7 @@ import { computed, ref } from 'vue'
 import { useI18n } from '@/composables/useI18n'
 import { useAuthStore } from '@/stores/auth'
 import type { FilesVO } from '@/types/file'
-import { childrenOf, toServerPath } from '@/types/file'
+import { childrenOf, isLegalFileName, sanitizePathSegments, toServerPath } from '@/types/file'
 import { canWriteInFolder } from '@/utils/driveAccess'
 import { isAnyForbiddenMoveDest, isSameFolder } from '@/utils/moveDest'
 import { archivalDisplayName } from '@/utils/text'
@@ -132,6 +132,9 @@ const pathLabel = computed(() =>
 )
 
 function openRoot(name: string) {
+  if (!isLegalFileName(name)) {
+    return
+  }
   crumbs.value = [name]
 }
 
@@ -142,6 +145,9 @@ function goUp() {
 }
 
 function enter(folder: FilesVO) {
+  if (!isLegalFileName(folder.fileName)) {
+    return
+  }
   crumbs.value = [...crumbs.value, folder.fileName]
 }
 
@@ -149,7 +155,11 @@ function confirm() {
   if (blocked.value || (!props.allowSamePlace && samePlace.value) || props.busy) {
     return
   }
-  emit('confirm', toServerPath(crumbs.value))
+  const safe = sanitizePathSegments(crumbs.value)
+  if (!safe) {
+    return
+  }
+  emit('confirm', toServerPath(safe))
 }
 </script>
 

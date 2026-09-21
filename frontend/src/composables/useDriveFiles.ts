@@ -29,6 +29,7 @@ import {
   isLegalFileName,
   joinServerPath,
   readFileCatalogVO,
+  sanitizePathSegments,
   storagePathSegments,
   toServerPath,
   bytesOfNode,
@@ -212,6 +213,10 @@ export function useDriveFiles() {
 
   function enter(node: FilesVO) {
     if (node.isFile) {
+      return
+    }
+    if (!isLegalFileName(node.fileName)) {
+      message.value = messageForCode(ErrorCode.FILE_NAME_ILLEGAL)
       return
     }
     crumbs.value = [...crumbs.value, node.fileName]
@@ -553,6 +558,7 @@ export function useDriveFiles() {
     if (!segs || segs.length === 0) {
       return { code: ErrorCode.FILE_ILLEGAL, data: null }
     }
+    let createdAny = false
     for (let i = 1; i <= segs.length; i += 1) {
       const slice = segs.slice(0, i)
       const existing = findNodeAt(slice)
@@ -569,14 +575,10 @@ export function useDriveFiles() {
       if (created.data.code !== ErrorCode.OK && created.data.code !== ErrorCode.FILE_DUPLICATE) {
         return created.data
       }
-      const listed = await getFiles()
-      if (isResultShape(listed.data) && listed.data.code === ErrorCode.OK) {
-        const catalog = readFileCatalogVO(listed.data.data)
-        if (catalog) {
-          roots.value = catalog.fileListVOS
-          sharedFiles.value = catalog.sharedFileVOS
-        }
-      }
+      createdAny = true
+    }
+    if (createdAny) {
+      await load({ quiet: true })
     }
     return { code: ErrorCode.OK, data: null }
   }
@@ -621,15 +623,6 @@ export function useDriveFiles() {
       const ensured = await ensureServerDir(targetDir)
       if (ensured.code !== ErrorCode.OK) {
         return ensured
-      }
-
-      const listed = await getFiles()
-      if (isResultShape(listed.data) && listed.data.code === ErrorCode.OK) {
-        const catalog = readFileCatalogVO(listed.data.data)
-        if (catalog) {
-          roots.value = catalog.fileListVOS
-          sharedFiles.value = catalog.sharedFileVOS
-        }
       }
 
       const segs = serverPathSegments(targetDir) ?? [String(userId)]
@@ -873,7 +866,12 @@ export function useDriveFiles() {
   }
 
   function goPath(segments: string[]) {
-    crumbs.value = [...segments]
+    const safe = sanitizePathSegments(segments)
+    if (!safe) {
+      message.value = messageForCode(ErrorCode.FILE_NAME_ILLEGAL)
+      return
+    }
+    crumbs.value = [...safe]
   }
 
   async function blobForItem(node: FilesVO, explicitPath?: string): Promise<Blob | null> {
@@ -912,6 +910,10 @@ export function useDriveFiles() {
   })
 
   function goInto(name: string) {
+    if (!isLegalFileName(name)) {
+      message.value = messageForCode(ErrorCode.FILE_NAME_ILLEGAL)
+      return
+    }
     crumbs.value = [name]
   }
 

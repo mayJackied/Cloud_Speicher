@@ -185,12 +185,12 @@ VO: `CreatShareLinkVO { shareKey }`
 **规划（领取稳定后）：** 同一用户同一路径若已有未过期码则返回原码且不刷新 `expireTime`；否则新建。
 
 *add_share_file_by_share_link*　POST `/api/file/addShareFileByShareLink`
-DTO: JSON 字符串分享码（请求体是 `"key"`，不是 `{ link }`）
+DTO: `LinkDTO { link }`
 VO: `SharedFileVO`；无效/过期 → `20010`，已使用 → `20011`。成功后该条目出现在下一次 `getFiles.sharedFileVOS`。
 领取仍偶发 `20010`（库有行却查不到或已过期被定时删）：见备忘录「当前阻塞」。
 
 *delete_shared_file*　POST `/api/file/deleteSharedFile`
-DTO: JSON 字符串分享码 `"key"`
+DTO: `LinkDTO { link }`
 VO: `Result<Void>`；撤销该码并删除所有通过该码建立的共享记录，接收者之后不再可见。
 **安全要求：** 必须先校验 `share_file_links.sharer_id == JWT user_id`。`cdf6773` 尚未校验且未领取过时会因删除数为 0 错报 `30001`；本地 backend 已修，部署前前端不开放撤销按钮。
 
@@ -468,12 +468,12 @@ The backend currently spells the endpoint and types as `creat`. In `075193e`, `e
 **Planned after redeem works:** if the same user already has a non-expired key for the same path, return that key without refreshing `expireTime`; otherwise create a new one.
 
 *add_share_file_by_share_link*　POST `/api/file/addShareFileByShareLink`
-DTO: a JSON string containing the share key (body is `"key"`, not `{ link }`)
+DTO: `LinkDTO { link }`
 VO: `SharedFileVO`; invalid/expired → `20010`, already used → `20011`.
 Redeem still intermittently returns `20010` even when a row was inserted — see `备忘录.md`.
 
 *delete_shared_file*　POST `/api/file/deleteSharedFile`
-DTO: JSON share-key string `"key"`. Revokes the key and removes all recipient records created from it.
+DTO: `LinkDTO { link }`. Revokes the key and removes all recipient records created from it.
 The backend must verify the JWT user is the key's `sharerId`. Commit `cdf6773` does not; the local backend patch adds this check and makes an unused key revocable.
 
 *zip*　POST `/api/file/zip`  

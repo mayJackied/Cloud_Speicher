@@ -7,6 +7,8 @@ import {
   readFileCatalogVO,
   readFilesVO,
   readFilesVOList,
+  sanitizePathSegments,
+  storagePathSegments,
   toServerPath,
 } from './file'
 
@@ -72,6 +74,17 @@ describe('FilesVO / path', () => {
   it('操作 path 拼 ./files + 面包屑', () => {
     expect(toServerPath(['public', 'document', 'a.txt'])).toBe('./files/public/document/a.txt')
     expect(toServerPath(['9'])).toBe('./files/9')
+  })
+
+  it('路径段拒绝 .. / 分隔符 / 空段', () => {
+    expect(sanitizePathSegments(['8', '..', 'a'])).toBeNull()
+    expect(sanitizePathSegments(['8', 'a/b'])).toBeNull()
+    expect(sanitizePathSegments(['8', ''])).toBeNull()
+    expect(sanitizePathSegments(['8', 'docs'])).toEqual(['8', 'docs'])
+    expect(() => toServerPath(['8', '..'])).toThrow('PATH_SEGMENT_ILLEGAL')
+    expect(() => joinServerPath('./files/8', '../x')).toThrow('PATH_SEGMENT_ILLEGAL')
+    expect(storagePathSegments('./files/8/../secret')).toBeNull()
+    expect(storagePathSegments('./files/8/docs')).toEqual(['8', 'docs'])
   })
 
   it('joinServerPath 给 rename/download 用，上传 path 仍是文件夹', () => {

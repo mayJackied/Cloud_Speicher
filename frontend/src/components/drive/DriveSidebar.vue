@@ -40,6 +40,7 @@
         to="/drive/transfers"
         :class="{ 'is-on': active === 'transfers' }"
       >
+        <span v-if="transferCount" class="drive-side__transfer-spin" aria-hidden="true" />
         {{ t('drive.transfers') }}
         <span v-if="transferCount">[{{ transferCount }}]</span>
       </router-link>
@@ -78,6 +79,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useTransferStore } from '@/stores/transfers'
 import { formatBytes } from '@/utils/formatFile'
 import { trashItemCount } from '@/utils/recycleBin'
+import '@/assets/styles/fonts.css'
 
 export type DriveSideChannel =
   | 'mine'
@@ -202,6 +204,24 @@ function onOver(slot: string, event: DragEvent) {
 
 .drive-side__nav :is(button, a).is-off {
   opacity: 0.45;
+}
+
+.drive-side__transfer-spin {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  margin-right: 0.35rem;
+  border: 1px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  vertical-align: -0.05rem;
+  animation: drive-transfer-spin 750ms linear infinite;
+}
+
+@keyframes drive-transfer-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .drive-side__store {

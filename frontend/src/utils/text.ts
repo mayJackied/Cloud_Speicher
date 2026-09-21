@@ -161,11 +161,9 @@ export function availableCopyName(taken: Iterable<string>, name: string): string
   return name
 }
 
-/** 档案风：只把拉丁字母变大写，CJK / 假名 / 谚文保持原字形。 */
+/** 展示后端文件名，仅修复可能的乱码，不改变空格或大小写。 */
 export function archivalDisplayName(name: string): string {
   return decodeFileName(name)
-    .replace(/\s+/g, '_')
-    .replace(/[A-Za-z]+/g, (chunk) => chunk.toUpperCase())
 }
 
 export function filenameFromContentDisposition(header: string | undefined, fallback: string): string {

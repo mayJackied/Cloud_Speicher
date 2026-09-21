@@ -1,13 +1,12 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import Register from '@/views/auth/Register.vue'
 
 const routes: RouteRecordRaw[] = [
   { path: '/', redirect: '/drive' },
   {
     path: '/register',
     name: 'register',
-    component: Register,
+    component: () => import('@/views/auth/Register.vue'),
     meta: { guestOnly: true, hideChrome: true },
   },
   {

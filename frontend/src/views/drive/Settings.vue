@@ -38,7 +38,7 @@
             </div>
             <div>
               <dt>{{ t('settings.version') }}</dt>
-              <dd>0.0.0</dd>
+              <dd>1.0.0</dd>
             </div>
             <div>
               <dt>{{ t('settings.encoding') }}</dt>

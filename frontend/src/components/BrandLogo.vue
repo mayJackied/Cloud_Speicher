@@ -5,6 +5,8 @@
 </template>
 
 <script setup lang="ts">
+import '@/assets/styles/fonts.css'
+
 withDefaults(
   defineProps<{
     title?: string

@@ -55,7 +55,7 @@ export function useTimeboard() {
     if (!document.hidden) {
       paint()
     }
-    raf = window.requestAnimationFrame(loop)
+    raf = window.setTimeout(loop, mode.value === 1 ? 1000 : 250)
   }
 
   function cycle() {
@@ -66,11 +66,11 @@ export function useTimeboard() {
 
   onMounted(() => {
     paint()
-    raf = window.requestAnimationFrame(loop)
+    raf = window.setTimeout(loop, 250)
   })
 
   onUnmounted(() => {
-    window.cancelAnimationFrame(raf)
+    window.clearTimeout(raf)
     window.clearTimeout(tickTimer)
   })
 

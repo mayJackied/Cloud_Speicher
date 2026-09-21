@@ -158,10 +158,10 @@ export function creatShareLink(dto: CreatShareLinkDTO) {
  * 需要带引号的 JSON，否则可能绑错或查库找不到 → 20010。
  */
 export function addShareFileByShareLink(link: string) {
-  return api.post<Result<SharedFileVO>>('/file/addShareFileByShareLink', JSON.stringify(link))
+  return api.post<Result<SharedFileVO>>('/file/addShareFileByShareLink', { link })
 }
 
-/** 撤销分享码；后端必须先校验当前用户确为该码的 sharer，UI 才能安全开放。 */
+/** 撤销分享码；后端使用 LinkDTO。 */
 export function deleteSharedFile(link: string) {
-  return api.post<Result<null>>('/file/deleteSharedFile', JSON.stringify(link))
+  return api.post<Result<null>>('/file/deleteSharedFile', { link })
 }

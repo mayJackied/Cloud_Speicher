@@ -52,4 +52,35 @@ describe('前端安全回归', () => {
     expect(html).toContain("object-src 'none'")
     expect(html).toContain("script-src 'self'")
   })
+
+  it('路径拼装拒绝非法段，进目录前校验文件名', () => {
+    const fileTypes = source('./types/file.ts')
+    expect(fileTypes).toContain('export function sanitizePathSegments')
+    expect(fileTypes).toContain("throw new Error('PATH_SEGMENT_ILLEGAL')")
+    expect(source('./composables/useDriveFiles.ts')).toContain(
+      'if (!isLegalFileName(node.fileName))',
+    )
+  })
+
+  it('kickToLogin 会清 Pinia，且 /dev 仅 DEV 注册', () => {
+    expect(source('./api/client.ts')).toContain('sessionKickHook')
+    expect(source('./main.ts')).toContain('setSessionKickHook')
+    expect(source('./main.ts')).toContain('useAuthStore(pinia).logout()')
+
+    const router = source('./router/index.ts')
+    expect(router).toContain('if (import.meta.env.DEV)')
+    expect(router.indexOf('if (import.meta.env.DEV)')).toBeLessThan(
+      router.indexOf("path: '/dev/contract'"),
+    )
+
+    expect(source('./App.vue')).toContain('v-if="isDev && showChrome"')
+    expect(source('./views/dev/ContractCheck.vue')).not.toContain('8.130.215.175')
+  })
+
+  it('主包不再全量引入 Element Plus，注册页懒加载', () => {
+    const main = source('./main.ts')
+    expect(main).not.toContain('element-plus')
+    expect(main).not.toContain('ElementPlus')
+    expect(source('./router/index.ts')).toContain("import('@/views/auth/Register.vue')")
+  })
 })

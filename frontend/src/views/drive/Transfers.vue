@@ -68,8 +68,11 @@
             >
               <template v-if="prefs.transferView === 'compact'">
                 <div class="transfer-compact">
-                  <span class="transfer-direction">
-                    {{ row.task.direction === 'upload' ? '↑' : '↓' }}
+                  <span class="transfer-activity">
+                    <span v-if="isActiveStatus(row.task.status)" class="transfer-spinner" aria-hidden="true" />
+                    <span class="transfer-direction">
+                      {{ row.task.direction === 'upload' ? '↑' : '↓' }}
+                    </span>
                   </span>
                   <h2>{{ row.task.fileName }}</h2>
                   <strong>{{ transferProgress(row.task) }}%</strong>
@@ -78,6 +81,7 @@
               <template v-else>
                 <div class="transfer-card__top">
                   <div class="transfer-name">
+                    <span v-if="isActiveStatus(row.task.status)" class="transfer-spinner" aria-hidden="true" />
                     <span class="transfer-direction">
                       {{ row.task.direction === 'upload' ? '↑' : '↓' }}
                     </span>
@@ -212,6 +216,10 @@ type DisplayRow =
 
 function isFinishedStatus(status: TransferStatus) {
   return status === 'completed' || status === 'canceled'
+}
+
+function isActiveStatus(status: TransferStatus) {
+  return status === 'queued' || status === 'running' || status === 'waiting_backend'
 }
 
 const { t } = useI18n()
@@ -502,6 +510,12 @@ onMounted(() => {
   align-items: center;
 }
 
+.transfer-activity {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
 .transfer-compact h2 {
   overflow: hidden;
   margin: 0;
@@ -542,6 +556,22 @@ onMounted(() => {
 .transfer-direction {
   color: var(--arc-lime);
   font-size: 1.4rem;
+}
+
+.transfer-spinner {
+  flex: 0 0 auto;
+  width: 0.7rem;
+  height: 0.7rem;
+  border: 1px solid var(--arc-lime);
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: transfer-spin 720ms linear infinite;
+}
+
+@keyframes transfer-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .transfer-name h2 {
