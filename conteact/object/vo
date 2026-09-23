@@ -14,4 +14,4 @@ SharedFileVO { FileListVO fileListVO; Integer sharerId; String sharedFilePath }
 
 StarredFileVO { private String starFilePath }
 
-CreatShareLinkVO { String shareKey }
+CreatShareLinkVO { String shareKey; boolean isNewLink }

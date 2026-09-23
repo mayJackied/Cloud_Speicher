@@ -470,11 +470,22 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
-    public Result<CreatShareLinkVO> creatShareLink(CreatShareLinkDTO creatShareLinkDTO) {
+    public Result<List<CreatShareLinkVO>> creatShareLink(CreatShareLinkDTO creatShareLinkDTO) {
         Integer errorCode = checkFilePermission(creatShareLinkDTO.getShareFilePath(), IN_PUBLIC_PATH_OR_SHARED_FILE_ALLOWED_OPERATION, CommonProperties.COMMON_PATH_OPERATION);
         if (errorCode != null) {
             return Result.error(errorCode);
         }
+        if (!creatShareLinkDTO.isNewLink()){
+            List<ShareFileLink> shareFileLinks = shareFileLinkMapper.selectList(new LambdaQueryWrapper<ShareFileLink>().eq(ShareFileLink::getShareFilePath, creatShareLinkDTO.getShareFilePath()).eq(ShareFileLink::getSharerId, UserContext.getUserId()));
+
+            List<CreatShareLinkVO> shareLinkVOS = new ArrayList<>();
+
+            for (ShareFileLink shareFileLink : shareFileLinks) {
+                shareLinkVOS.add(new CreatShareLinkVO(shareFileLink.getShareLink(),shareFileLink.getExpireTime()));
+            }
+            return Result.success(shareLinkVOS);
+        }
+
         String shareLink = UUID.randomUUID().toString().replace("-", "");
 
         long expireTime;
@@ -492,7 +503,7 @@ public class FileServiceImpl implements FileService {
                         creatShareLinkDTO.getShareFilePath(), expireTime
                 )
         );
-        return Result.success(new CreatShareLinkVO(shareLink));
+        return Result.success(List.of(new CreatShareLinkVO(shareLink, expireTime)));
     }
 
     @Override

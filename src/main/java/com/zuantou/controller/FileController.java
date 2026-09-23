@@ -120,7 +120,7 @@ public class FileController {
     }
 
     @PostMapping("/creatShareLink")
-    public Result<CreatShareLinkVO> creatShareLink(@RequestBody CreatShareLinkDTO creatShareLinkDTO){
+    public Result<List<CreatShareLinkVO>> creatShareLink(@RequestBody CreatShareLinkDTO creatShareLinkDTO){
         return fileService.creatShareLink(creatShareLinkDTO);
     }
 

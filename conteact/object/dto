@@ -30,6 +30,6 @@ GetUploadedSizeDTO { String uploadKey }
 
 StarFileDTO { private String starFilePath }
 
-CreatShareLinkDTO { String shareFilePath; Double expireDuration } Tipp: 单位为小时 如果为0的话就是默认24小时
+CreatShareLinkDTO { boolean isNewLink; String shareFilePath; Double expireDuration } Tipp: 单位为小时 如果为0的话就是默认24小时
 
 LinkDTO { String link }

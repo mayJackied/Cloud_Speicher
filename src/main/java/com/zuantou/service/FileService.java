@@ -53,7 +53,7 @@ public interface FileService {
 
     Result<List<StarredFileVO>> getStarredFiles();
 
-    Result<CreatShareLinkVO> creatShareLink(CreatShareLinkDTO creatShareLinkDTO);
+    Result<List<CreatShareLinkVO>> creatShareLink(CreatShareLinkDTO creatShareLinkDTO);
 
     Result<SharedFileVO> addShareFileByShareLink(LinkDTO link);
 

@@ -125,7 +125,7 @@ VO: Result<List<StarredFileVO>>
 *creat_share_link*
 post: /api/file/creatShareLink
 DTO: CreatShareLinkDTO creatShareLinkDTO
-VO: Result<CreatShareLinkVO>
+VO: Result<List<CreatShareLinkVO>>
 
 *add_share_file_by_share_link*
 post: /api/file/addShareFileByShareLink

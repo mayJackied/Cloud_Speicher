@@ -9,4 +9,5 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class CreatShareLinkVO {
     private String shareKey;
+    private Long expireTime;
 }
