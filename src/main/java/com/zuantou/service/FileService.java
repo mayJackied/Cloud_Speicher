@@ -1,6 +1,6 @@
 package com.zuantou.service;
 
-import com.zuantou.pojo.dto.LinkDTO;
+import com.zuantou.pojo.dto.file.LinkDTO;
 import com.zuantou.pojo.vo.*;
 import com.zuantou.pojo.dto.file.*;
 import com.zuantou.pojo.dto.file.continueableDTO.CloseUploadDTO;
@@ -53,7 +53,7 @@ public interface FileService {
 
     Result<List<StarredFileVO>> getStarredFiles();
 
-    Result<List<CreatShareLinkVO>> creatShareLink(CreatShareLinkDTO creatShareLinkDTO);
+    Result<CreatShareLinkVO> creatShareLink(CreatShareLinkDTO creatShareLinkDTO);
 
     Result<SharedFileVO> addShareFileByShareLink(LinkDTO link);
 

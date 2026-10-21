@@ -2,6 +2,8 @@ package com.zuantou.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zuantou.common.exception.BusinessException;
 import com.zuantou.common.properties.CommonProperties;
 import com.zuantou.common.properties.ErrorCode;
@@ -11,13 +13,10 @@ import com.zuantou.mapper.user.UserMapper;
 import com.zuantou.pojo.*;
 import com.zuantou.common.utils.UserContext;
 import com.zuantou.common.properties.MyValFileProperties;
-import com.zuantou.pojo.dto.LinkDTO;
+import com.zuantou.pojo.dto.file.LinkDTO;
+import com.zuantou.pojo.dto.file.continueableDTO.*;
 import com.zuantou.pojo.vo.*;
 import com.zuantou.pojo.dto.file.*;
-import com.zuantou.pojo.dto.file.continueableDTO.CloseUploadDTO;
-import com.zuantou.pojo.dto.file.continueableDTO.ContinuableDownloadDTO;
-import com.zuantou.pojo.dto.file.continueableDTO.ContinuableUploadDTO;
-import com.zuantou.pojo.dto.file.continueableDTO.GetUploadedSizeDTO;
 import com.zuantou.service.FileService;
 import com.zuantou.common.utils.FileUtil;
 import jakarta.servlet.http.HttpServletRequest;
@@ -40,6 +39,9 @@ public class FileServiceImpl implements FileService {
     private final StarredFileMapper starredFileMapper;
     private final ShareFileLinkMapper shareFileLinkMapper;
     private final SharedFileMapper sharedFileMapper;
+    private final UploadFolderMapper uploadFolderMapper;
+
+    ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
     public Result<FileVOS> getFiles() {
@@ -322,6 +324,16 @@ public class FileServiceImpl implements FileService {
         return Result.success(uuid);
     }
 
+    public Result<String> initUploadFolder(InitUploadFolderDTO initUploadFolderDTO){
+        String uuid = UUID.randomUUID().toString();
+        try {
+            uploadFolderMapper.insert(new UploadFolder(uuid, initUploadFolderDTO.getUploadFilePath(), objectMapper.writeValueAsString(initUploadFolderDTO.getInitUploadFolders().toString())));
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+        return Result.success(uuid);
+    }
+
     @Override
     public Result<Void> continuableUpload(ContinuableUploadDTO continuableUploadDTO, HttpServletRequest request) {
         Integer errorCode = checkFilePermission(continuableUploadDTO.getTargetPath(), OTHER, CommonProperties.COMMON_PATH_OPERATION);
@@ -470,20 +482,15 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
-    public Result<List<CreatShareLinkVO>> creatShareLink(CreatShareLinkDTO creatShareLinkDTO) {
+    public Result<CreatShareLinkVO> creatShareLink(CreatShareLinkDTO creatShareLinkDTO) {
         Integer errorCode = checkFilePermission(creatShareLinkDTO.getShareFilePath(), IN_PUBLIC_PATH_OR_SHARED_FILE_ALLOWED_OPERATION, CommonProperties.COMMON_PATH_OPERATION);
         if (errorCode != null) {
             return Result.error(errorCode);
         }
         if (!creatShareLinkDTO.isNewLink()){
-            List<ShareFileLink> shareFileLinks = shareFileLinkMapper.selectList(new LambdaQueryWrapper<ShareFileLink>().eq(ShareFileLink::getShareFilePath, creatShareLinkDTO.getShareFilePath()).eq(ShareFileLink::getSharerId, UserContext.getUserId()));
+            ShareFileLink shareFileLink = shareFileLinkMapper.selectOne(new LambdaQueryWrapper<ShareFileLink>().eq(ShareFileLink::getShareFilePath, creatShareLinkDTO.getShareFilePath()).eq(ShareFileLink::getSharerId, UserContext.getUserId()));
 
-            List<CreatShareLinkVO> shareLinkVOS = new ArrayList<>();
-
-            for (ShareFileLink shareFileLink : shareFileLinks) {
-                shareLinkVOS.add(new CreatShareLinkVO(shareFileLink.getShareLink(),shareFileLink.getExpireTime()));
-            }
-            return Result.success(shareLinkVOS);
+            return Result.success(new CreatShareLinkVO(shareFileLink.getShareLink(), shareFileLink.getExpireTime()));
         }
 
         String shareLink = UUID.randomUUID().toString().replace("-", "");
@@ -503,7 +510,7 @@ public class FileServiceImpl implements FileService {
                         creatShareLinkDTO.getShareFilePath(), expireTime
                 )
         );
-        return Result.success(List.of(new CreatShareLinkVO(shareLink, expireTime)));
+        return Result.success(new CreatShareLinkVO(shareLink, expireTime));
     }
 
     @Override
@@ -699,7 +706,7 @@ public class FileServiceImpl implements FileService {
     private final int IN_PUBLIC_PATH_OR_SHARED_FILE_ALLOWED_OPERATION = 0;
     private final int OTHER = 1;
 
-    public FileServiceImpl(MyValFileProperties fileProperties, UserMapper userMapper, DeleteBinFileSourceMapper deleteBinFileSourceMapper, ContinuableUploadMapper continuableUploadMapper, StarredFileMapper starredFileMapper, ShareFileLinkMapper shareFileMapper, SharedFileMapper sharedFileMapper) {
+    public FileServiceImpl(MyValFileProperties fileProperties, UserMapper userMapper, DeleteBinFileSourceMapper deleteBinFileSourceMapper, ContinuableUploadMapper continuableUploadMapper, StarredFileMapper starredFileMapper, ShareFileLinkMapper shareFileMapper, SharedFileMapper sharedFileMapper, UploadFolderMapper uploadFolderMapper) {
         this.fileProperties = fileProperties;
         this.userMapper = userMapper;
         this.deleteBinFileSourceMapper = deleteBinFileSourceMapper;
@@ -707,5 +714,6 @@ public class FileServiceImpl implements FileService {
         this.starredFileMapper = starredFileMapper;
         this.shareFileLinkMapper = shareFileMapper;
         this.sharedFileMapper = sharedFileMapper;
+        this.uploadFolderMapper = uploadFolderMapper;
     }
 }

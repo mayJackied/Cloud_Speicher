@@ -1,5 +1,5 @@
 package com.zuantou.controller;
-import com.zuantou.pojo.dto.LinkDTO;
+import com.zuantou.pojo.dto.file.LinkDTO;
 import com.zuantou.pojo.vo.*;
 import com.zuantou.pojo.dto.file.*;
 import com.zuantou.pojo.dto.file.continueableDTO.CloseUploadDTO;
@@ -120,7 +120,7 @@ public class FileController {
     }
 
     @PostMapping("/creatShareLink")
-    public Result<List<CreatShareLinkVO>> creatShareLink(@RequestBody CreatShareLinkDTO creatShareLinkDTO){
+    public Result<CreatShareLinkVO> creatShareLink(@RequestBody CreatShareLinkDTO creatShareLinkDTO){
         return fileService.creatShareLink(creatShareLinkDTO);
     }
 
