@@ -137,4 +137,14 @@ const { t } = useI18n()
   letter-spacing: 0.24em;
   pointer-events: none;
 }
+
+@media (max-width: 1023px) {
+  .frame__spine {
+    display: none;
+  }
+
+  .frame__time {
+    display: none;
+  }
+}
 </style>

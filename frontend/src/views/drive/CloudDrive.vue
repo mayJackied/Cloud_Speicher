@@ -1,28 +1,43 @@
 <template>
   <ArchiveFrame fill :clock="false">
-    <div class="arc">
-    <DriveSidebar
-      :active="channel"
-      :drop-slot="dropSlot"
-      enable-drop
-      @open-mine="openMine"
-      @open-public="openPublic"
-      @open-root="openRoot"
-      @open-trash="openTrash"
-      @open-starred="openStarred"
-      @open-shared="openShared"
-      @note-offline="noteOffline"
-      @logout="onLogout"
-      @slot-over="onSlotOver"
-      @slot-leave="onSlotLeave"
-      @drop-mine="onDropMine"
-      @drop-public="onDropPublic"
-      @drop-trash="onDropTrash"
+    <div class="arc" :class="{ 'is-nav-open': navOpen }">
+    <button
+      type="button"
+      class="arc__nav-toggle"
+      :aria-expanded="navOpen"
+      :aria-label="t('drive.menu')"
+      @click="navOpen = !navOpen"
+    >{{ navOpen ? t('drive.menuClose') : t('drive.menu') }}</button>
+    <div
+      v-if="navOpen"
+      class="arc__nav-mask"
+      aria-hidden="true"
+      @click="navOpen = false"
     />
+    <div class="arc__side" @click="onSideNavClick">
+      <DriveSidebar
+        :active="channel"
+        :drop-slot="dropSlot"
+        enable-drop
+        @open-mine="openMine"
+        @open-public="openPublic"
+        @open-root="openRoot"
+        @open-trash="openTrash"
+        @open-starred="openStarred"
+        @open-shared="openShared"
+        @note-offline="noteOffline"
+        @logout="onLogout"
+        @slot-over="onSlotOver"
+        @slot-leave="onSlotLeave"
+        @drop-mine="onDropMine"
+        @drop-public="onDropPublic"
+        @drop-trash="onDropTrash"
+      />
+    </div>
 
     <div class="arc__body">
       <header class="arc__head">
-        <div>
+        <div class="arc__head-start">
           <p class="arc__kicker">ARCHIVAL_CLOUD_SYSTEM</p>
           <h1 class="arc__title">
             <button type="button" @click="openRoot">MY_ARCHIVE</button>
@@ -40,7 +55,7 @@
           </h1>
         </div>
         <div class="arc__head-end">
-          <Timeboard />
+          <Timeboard v-if="!phone" class="arc__timeboard" />
           <div class="arc__status">
             <span class="arc__stat">
               <em>{{ t('drive.storageUsed') }}</em>
@@ -55,9 +70,11 @@
         </div>
       </header>
 
-      <p v-if="toastNote" class="arc__toast" role="status" aria-live="polite">
-        {{ toastNote }}
-      </p>
+      <Transition name="arc-toast">
+        <p v-if="toastShown" class="arc__toast" role="status" aria-live="polite">
+          {{ toastText }}
+        </p>
+      </Transition>
 
       <div class="arc__tools">
         <input
@@ -87,12 +104,19 @@
         <button type="button" :class="{ 'is-on': view === 'list' }" @click="view = 'list'">{{ t('drive.list') }}</button>
         <button v-if="canWrite && !atRoot && !inStarred && !inShared" type="button" class="arc__cta" @click="openCreate">{{ t('drive.create') }}</button>
         <button v-if="canWrite && !atRoot && !inStarred && !inShared" type="button" class="arc__cta" @click="pickUpload">{{ t('drive.upload') }}</button>
+        <button v-if="canWrite && !atRoot && !inStarred && !inShared" type="button" class="arc__cta" @click="pickUploadFolder">{{ t('drive.uploadFolder') }}</button>
         <button type="button" class="arc__cta" @click="openAcceptShare">{{ t('drive.acceptShare') }}</button>
-        <input ref="fileInput" class="arc__hidden" type="file" @change="onFileInput" />
+        <input ref="fileInput" class="arc__hidden" type="file" multiple @change="onFileInput" />
+        <input ref="folderInput" class="arc__hidden" type="file" webkitdirectory multiple @change="onFolderInput" />
       </div>
 
       <p class="arc__sel" :class="{ 'is-idle': !selected }">
         <span class="arc__sel-count">{{ selectedLabel }}</span>
+        <button
+          v-if="drawerNav && selected"
+          type="button"
+          @click="previewSheetOpen = true"
+        >{{ t('drive.preview') }}</button>
         <button type="button" :disabled="!canActDownload" @click="selected && queueDownload(selected)">{{ t('drive.download') }}</button>
         <button type="button" :disabled="!canActWrite || selectedItems.length !== 1" @click="openRename">{{ t('drive.rename') }}</button>
         <button type="button" :disabled="!canBatchMove" @click="openMove">{{ t('drive.move') }}</button>
@@ -157,7 +181,7 @@
               {{ t('drive.append') }}
             </button>
           </div>
-          <table v-else class="arc__list">
+          <table v-else class="arc__list arc__list--desk">
             <thead>
               <tr>
                 <th>{{ t('drive.name') }}</th>
@@ -187,14 +211,54 @@
               </tr>
             </tbody>
           </table>
+          <ul v-if="view === 'list'" class="arc__rows" @click.self="clearSelection">
+            <li
+              v-for="item in visibleItems"
+              :key="`row-${item.fileName}`"
+              class="arc__row"
+              :class="{ 'is-on': selectedNames.includes(item.fileName), 'is-drop': canDropInto(item) }"
+              :draggable="canDragItems && !isProtectedBin(item)"
+              @click="select(item, $event)"
+              @dblclick="openItem(item)"
+              @contextmenu.prevent="openMenu($event, item)"
+              @dragstart="onItemDragStart(item)"
+              @dragend="onItemDragEnd"
+              @dragover="canDropInto(item) && onSlotOver(`folder:${item.fileName}`, $event)"
+              @drop.prevent="onDropIntoFolder(item)"
+            >
+              <span class="arc__row-thumb" aria-hidden="true">
+                <img
+                  v-if="prefs.thumbnails && previews[item.fileName]"
+                  :src="previews[item.fileName]"
+                  alt=""
+                />
+                <em v-else>{{ kindOf(item) === 'folder' ? 'DIR' : typeLabel(kindOf(item), item.fileName).slice(0, 3) }}</em>
+              </span>
+              <span class="arc__row-body">
+                <strong>{{ archivalDisplayName(itemLabel(item)) }}</strong>
+                <small>{{ formatBytes(bytesOfNode(item)) }} · {{ formatStamp(item.lastModified) }}</small>
+              </span>
+            </li>
+          </ul>
         </section>
 
-        <aside class="arc__preview">
+        <aside
+          class="arc__preview"
+          :class="{ 'is-sheet': drawerNav, 'is-open': previewSheetOpen }"
+        >
           <div class="arc__preview-head">
             <span>{{ t('drive.preview') }}</span>
-            <button v-if="selected && kindOf(selected) === 'image'" type="button" @click="reveal = !reveal">
-              {{ reveal ? t('drive.cyanotype') : t('drive.reveal') }}
-            </button>
+            <div class="arc__preview-actions">
+              <button v-if="selected && kindOf(selected) === 'image'" type="button" @click="reveal = !reveal">
+                {{ reveal ? t('drive.cyanotype') : t('drive.reveal') }}
+              </button>
+              <button
+                v-if="drawerNav"
+                type="button"
+                class="arc__preview-close"
+                @click="previewSheetOpen = false"
+              >{{ t('drive.previewClose') }}</button>
+            </div>
           </div>
           <template v-if="selected">
             <div class="arc__frame">
@@ -312,6 +376,7 @@ import { ErrorCode, messageForCode } from '@/types/errorCode'
 import { kindOf, needsPosterFrame, typeLabel } from '@/utils/fileKind'
 import { formatBytes, formatStamp } from '@/utils/formatFile'
 import { copyText } from '@/utils/clipboard'
+import { planFolderUpload } from '@/utils/folderUpload'
 import { remapStarredPaths } from '@/utils/starredCache'
 import { archivalDisplayName, decodeFileName } from '@/utils/text'
 import { canWriteInFolder } from '@/utils/driveAccess'
@@ -333,6 +398,7 @@ import ArchiveFrame from '@/components/drive/ArchiveFrame.vue'
 import DriveSidebar from '@/components/drive/DriveSidebar.vue'
 import FolderPicker from '@/components/drive/FolderPicker.vue'
 import Timeboard from '@/components/drive/Timeboard.vue'
+import { useShellBreakpoints } from '@/composables/useShellBreakpoints'
 
 const CyanotypeMedia = defineAsyncComponent(() => import('@/components/drive/CyanotypeMedia.vue'))
 
@@ -361,6 +427,9 @@ type DialogState = {
 }
 
 const { t, locale } = useI18n()
+const { drawerNav, phone } = useShellBreakpoints()
+const navOpen = ref(false)
+const previewSheetOpen = ref(false)
 const { status: linkStatus, syncLabel, pillLabel } = useApiLink()
 const syncClass = computed(() => {
   if (linkStatus.value === 'online') {
@@ -371,6 +440,20 @@ const syncClass = computed(() => {
   }
   return 'is-mute'
 })
+
+watch(drawerNav, (narrow) => {
+  if (!narrow) {
+    navOpen.value = false
+    previewSheetOpen.value = false
+  }
+})
+
+function onSideNavClick(event: MouseEvent) {
+  const el = event.target as HTMLElement | null
+  if (el?.closest('a, button')) {
+    navOpen.value = false
+  }
+}
 const pillClass = computed(() => {
   if (linkStatus.value === 'online') {
     return 'is-up'
@@ -395,6 +478,7 @@ const transfers = useTransferStore()
 const route = useRoute()
 const router = useRouter()
 const fileInput = ref<HTMLInputElement | null>(null)
+const folderInput = ref<HTMLInputElement | null>(null)
 const query = ref('')
 const searching = computed(() => query.value.trim().length > 0)
 const sortKey = ref<SortKey>('name')
@@ -415,6 +499,13 @@ const dialog = ref<DialogState | null>(null)
 const moveOpen = ref(false)
 const extractOpen = ref(false)
 const prefs = usePrefsStore()
+
+watch(selected, (item) => {
+  if (!drawerNav.value) {
+    return
+  }
+  previewSheetOpen.value = Boolean(item)
+})
 
 const {
   roots,
@@ -439,6 +530,7 @@ const {
   restoreItem,
   trashLabelOf,
   moveItem,
+  moveItems,
   compressItem,
   extractItem,
   blobForItem,
@@ -554,7 +646,7 @@ const canCompress = computed(
     selectedItems.value.length === 1,
 )
 const canBatchMove = computed(
-  () => canActWrite.value && selectedItems.value.length === 1,
+  () => canActWrite.value && selectedItems.value.length > 0,
 )
 const canExtract = computed(
   () =>
@@ -576,7 +668,46 @@ const canDragItems = computed(
 const selNote = computed(
   () => message.value || offlineNote.value || (loading.value || busy.value ? t('drive.loading') : ''),
 )
-const toastNote = computed(() => message.value || offlineNote.value)
+
+const TOAST_VISIBLE_MS = 3000
+const toastText = ref('')
+const toastShown = ref(false)
+let toastTimer: number | undefined
+
+function clearToastTimer() {
+  if (toastTimer !== undefined) {
+    window.clearTimeout(toastTimer)
+    toastTimer = undefined
+  }
+}
+
+function dismissToast() {
+  clearToastTimer()
+  toastShown.value = false
+  if (message.value) {
+    message.value = ''
+  }
+  if (offlineNote.value) {
+    offlineNote.value = ''
+  }
+}
+
+watch(
+  () => message.value || offlineNote.value,
+  (text) => {
+    if (!text) {
+      clearToastTimer()
+      toastShown.value = false
+      return
+    }
+    toastText.value = text
+    toastShown.value = true
+    clearToastTimer()
+    toastTimer = window.setTimeout(() => {
+      dismissToast()
+    }, TOAST_VISIBLE_MS)
+  },
+)
 
 const locationLabel = computed(() => {
   if (inStarred.value) {
@@ -668,6 +799,7 @@ function clearSelection() {
   selected.value = null
   selectedNames.value = []
   menu.value = null
+  previewSheetOpen.value = false
 }
 
 async function openTrash() {
@@ -780,15 +912,16 @@ async function onShareSelected() {
     message.value = messageForCode(ErrorCode.FILE_NAME_ILLEGAL)
     return
   }
-  // 后端 075193e 对 expireDuration=0 的默认时长分支写反，会生成立即过期的码。
-  const key = await createShareKey(path, 24)
-  if (!key) {
+  // 明确发 24 小时；同路径已有未过期码时后端沿用原码并续期到 now + 24h。
+  const created = await createShareKey(path, 24)
+  if (!created) {
     return
   }
+  const { key, reused } = created
   if (await copyText(key)) {
-    message.value = t('drive.shareCreatedCopied', { key })
+    message.value = t(reused ? 'drive.shareReusedCopied' : 'drive.shareCreatedCopied', { key })
   } else {
-    message.value = t('drive.shareCreated', { key })
+    message.value = t(reused ? 'drive.shareReused' : 'drive.shareCreated', { key })
   }
 }
 
@@ -996,9 +1129,11 @@ async function pickUpload() {
   if (picker) {
     try {
       const handles = await picker({ multiple: true })
+      const queued: Array<{ file: File; handle?: FileSystemFileHandleLike }> = []
       for (const handle of handles) {
-        await queueUpload(await handle.getFile(), handle)
+        queued.push({ file: await handle.getFile(), handle })
       }
+      await queueUploads(queued)
     } catch {
       /* user canceled */
     }
@@ -1009,17 +1144,28 @@ async function pickUpload() {
 
 async function onFileInput(event: Event) {
   const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (file) {
-    await queueUpload(file)
-  }
+  const files = Array.from(input.files ?? [])
+  await queueUploads(files.map((file) => ({ file })))
   input.value = ''
 }
 
-async function queueUpload(file: File, handle?: FileSystemFileHandleLike) {
-  const finalName = decodeFileName(file.name)
-  if (!isLegalFileName(finalName)) {
-    message.value = messageForCode(ErrorCode.FILE_NAME_ILLEGAL)
+function pickUploadFolder() {
+  folderInput.value?.click()
+}
+
+async function onFolderInput(event: Event) {
+  const input = event.target as HTMLInputElement
+  const plan = planFolderUpload(Array.from(input.files ?? []))
+  input.value = ''
+  // 后端 initUpload 会按相对路径逐级建父目录；空文件夹浏览器不会给出，因此不会被创建。
+  await queueUploads(plan.items, plan.skipped)
+}
+
+async function queueUploads(
+  items: Array<{ file: File; handle?: FileSystemFileHandleLike; dirSegments?: string[] }>,
+  preSkipped = 0,
+) {
+  if (items.length === 0 && preSkipped === 0) {
     return
   }
   const dir = sanitizePathSegments(crumbs.value)
@@ -1027,8 +1173,32 @@ async function queueUpload(file: File, handle?: FileSystemFileHandleLike) {
     message.value = messageForCode(ErrorCode.FILE_NAME_ILLEGAL)
     return
   }
-  await transfers.enqueueUpload(file, toServerPath(dir), handle)
-  message.value = t('transfers.uploadQueuedNotice', { name: finalName })
+  let accepted = 0
+  let rejected = preSkipped
+  for (const item of items) {
+    const finalName = decodeFileName(item.file.name)
+    const subDir = sanitizePathSegments(item.dirSegments ?? [])
+    if (!isLegalFileName(finalName) || !subDir) {
+      rejected += 1
+      continue
+    }
+    await transfers.enqueueUpload(item.file, toServerPath([...dir, ...subDir]), item.handle)
+    accepted += 1
+  }
+  if (accepted === 0) {
+    message.value = messageForCode(ErrorCode.FILE_NAME_ILLEGAL)
+    return
+  }
+  if (accepted === 1 && rejected === 0) {
+    message.value = t('transfers.uploadQueuedNotice', {
+      name: decodeFileName(items[0].file.name),
+    })
+    return
+  }
+  message.value =
+    rejected > 0
+      ? t('transfers.uploadQueuedBatchPartial', { count: accepted, skipped: rejected })
+      : t('transfers.uploadQueuedBatch', { count: accepted })
 }
 
 async function queueDownload(item: FilesVO) {
@@ -1350,9 +1520,7 @@ async function onBrowserDrop(event: DragEvent) {
     return
   }
   const files = Array.from(event.dataTransfer?.files ?? [])
-  for (const file of files) {
-    await queueUpload(file)
-  }
+  await queueUploads(files.map((file) => ({ file })))
 }
 
 function openCreate() {
@@ -1375,10 +1543,6 @@ function openMove() {
   if (selectedItems.value.length === 0 || atRoot.value || !canWrite.value) {
     return
   }
-  if (selectedItems.value.length > 1) {
-    message.value = t('drive.batchMoveUnavailable')
-    return
-  }
   moveOpen.value = true
 }
 
@@ -1389,17 +1553,36 @@ function closeMove() {
 }
 
 async function onMoveConfirm(targetDir: string) {
-  const item = selectedItems.value[0] ?? selected.value
-  if (!item || selectedItems.value.length !== 1) {
+  const items = selectedItems.value.length ? [...selectedItems.value] : selected.value ? [selected.value] : []
+  if (items.length === 0) {
     moveOpen.value = false
-    message.value = t('drive.batchMoveUnavailable')
     return
   }
-  await moveItem(item, targetDir)
-  moveOpen.value = false
-  if (!message.value) {
-    clearSelection()
+  if (items.length === 1) {
+    await moveItem(items[0]!, targetDir)
+    moveOpen.value = false
+    if (!message.value) {
+      clearSelection()
+    }
+    return
   }
+  const summary = await moveItems(items, targetDir)
+  moveOpen.value = false
+  if (!summary) {
+    return
+  }
+  if (summary.failed.length === 0) {
+    message.value = t('drive.batchMoved', { count: summary.moved })
+    clearSelection()
+    return
+  }
+  const names = summary.failed.map((row) => decodeFileName(row.name)).join('、')
+  message.value = t('drive.batchMovePartial', {
+    count: summary.moved,
+    failed: summary.failed.length,
+    names,
+    reason: messageForCode(summary.failed[0]!.code),
+  })
 }
 
 function confirmDelete() {
@@ -1580,6 +1763,7 @@ onUnmounted(() => {
   window.removeEventListener('mousedown', closeMenu)
   window.removeEventListener('keydown', onKey)
   window.clearTimeout(warmTimer)
+  clearToastTimer()
   previewQueue.length = 0
   Object.values(previews).forEach((url) => URL.revokeObjectURL(url))
 })
@@ -1692,15 +1876,14 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: flex-end;
   gap: 0.55rem;
-  min-width: 18.5rem;
 }
 
 .arc__status {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.75rem;
-  height: 10px;
+  min-height: 10px;
   font-family: 'Microsoft YaHei UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
   font-size: 10px;
   letter-spacing: 0.04em;
@@ -1892,6 +2075,19 @@ onUnmounted(() => {
   box-shadow: 0 0.75rem 2rem rgb(0 0 0 / 28%);
 }
 
+.arc-toast-enter-active,
+.arc-toast-leave-active {
+  transition:
+    opacity 0.35s ease,
+    transform 0.35s ease;
+}
+
+.arc-toast-enter-from,
+.arc-toast-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-0.4rem);
+}
+
 .arc__browser {
   position: relative;
   min-width: 0;
@@ -2028,6 +2224,81 @@ onUnmounted(() => {
   color: var(--arc-lime);
 }
 
+.arc__rows {
+  display: none;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.arc__row {
+  display: grid;
+  grid-template-columns: 2.75rem minmax(0, 1fr);
+  gap: 0.7rem;
+  align-items: center;
+  padding: 0.55rem 0.25rem;
+  border-bottom: 1px solid var(--arc-line);
+  cursor: pointer;
+}
+
+.arc__row.is-on,
+.arc__row.is-drop {
+  color: var(--arc-lime);
+}
+
+.arc__row-thumb {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  overflow: hidden;
+  border: 1px solid var(--arc-line);
+  background: #07151e;
+  color: var(--arc-chem);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.arc__row-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.arc__row-thumb em {
+  font-style: normal;
+}
+
+.arc__row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.arc__row-body strong {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arc__row-body small {
+  color: rgb(235 244 246 / 48%);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+.arc__nav-toggle {
+  display: none;
+}
+
+.arc__nav-mask {
+  display: none;
+}
+
 .arc__preview {
   display: flex;
   flex-direction: column;
@@ -2044,9 +2315,18 @@ onUnmounted(() => {
 .arc__preview-head {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
   font-size: 10px;
   letter-spacing: 0.16em;
   color: var(--arc-chem);
+}
+
+.arc__preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: center;
 }
 
 .arc__frame {
@@ -2151,12 +2431,77 @@ onUnmounted(() => {
     grid-template-columns: 1fr;
   }
 
-  .arc :deep(.drive-side) {
-    display: none;
+  .arc__nav-toggle {
+    position: fixed;
+    z-index: 28;
+    top: 0.75rem;
+    left: 0.75rem;
+    display: inline-flex;
+    align-items: center;
+    padding: 0.4rem 0.55rem;
+    border: 1px solid var(--arc-line);
+    background: rgb(8 25 35 / 92%);
+    color: var(--arc-lime);
+    font: inherit;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    cursor: pointer;
+  }
+
+  .arc__nav-mask {
+    position: fixed;
+    inset: 0;
+    z-index: 26;
+    display: block;
+    background: rgb(6 19 27 / 55%);
+  }
+
+  .arc__side {
+    position: fixed;
+    z-index: 27;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(16.5rem, 86vw);
+    transform: translateX(-105%);
+    transition: transform 180ms ease;
+    background: var(--arc-canvas-2);
+    border-right: 1px solid var(--arc-line);
+    box-shadow: 0.5rem 0 2rem rgb(0 0 0 / 28%);
+  }
+
+  .arc.is-nav-open .arc__side {
+    transform: translateX(0);
+  }
+
+  .arc__side :deep(.drive-side) {
+    height: 100%;
+    border-right: 0;
+  }
+
+  .arc__body {
+    padding: 2.6rem 0.85rem 1rem;
   }
 
   .arc__workspace {
-    grid-template-columns: minmax(0, 1fr) minmax(14rem, 18rem);
+    grid-template-columns: 1fr;
+  }
+
+  .arc__preview.is-sheet {
+    position: fixed;
+    z-index: 24;
+    left: 0.6rem;
+    right: 0.6rem;
+    bottom: 0.6rem;
+    max-height: min(70vh, 28rem);
+    display: none;
+    border: 1px solid var(--arc-line);
+    background: rgb(8 25 35 / 96%);
+    box-shadow: 0 -0.75rem 2rem rgb(0 0 0 / 35%);
+  }
+
+  .arc__preview.is-sheet.is-open {
+    display: flex;
   }
 
   .arc__grid-view {
@@ -2165,25 +2510,57 @@ onUnmounted(() => {
 }
 
 @media (max-width: 720px) {
-  .arc__workspace {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 1fr) minmax(10rem, 38%);
+  .arc__head {
+    align-items: flex-start;
+    gap: 0.65rem;
   }
 
-  .arc__preview {
-    border-top: 1px solid var(--arc-line);
+  .arc__head-end {
+    align-items: flex-start;
+    width: 100%;
+  }
+
+  .arc__tools {
+    gap: 0.45rem;
+    padding: 0.55rem 0;
+  }
+
+  .arc__search {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .arc__sel {
+    gap: 0.5rem 0.65rem;
+    min-height: 0;
+  }
+
+  .arc__list--desk {
+    display: none;
+  }
+
+  .arc__rows {
+    display: block;
   }
 
   .arc__frame {
-    max-height: 9rem;
+    max-height: 11rem;
     aspect-ratio: auto;
-    height: 9rem;
+    height: 11rem;
+  }
+
+  .arc__meta div {
+    grid-template-columns: 5.5rem 1fr;
   }
 }
 
 @media (max-width: 639px) {
   .arc__grid-view {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .arc__title {
+    font-size: clamp(1rem, 5.5vw, 1.35rem);
   }
 }
 </style>

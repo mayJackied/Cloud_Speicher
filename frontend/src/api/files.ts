@@ -9,6 +9,7 @@ import type {
   FileDTO,
   FileCatalogVO,
   MoveFileDTO,
+  MoveFilesVO,
   RenameFileDTO,
   SharedFileVO,
   StarFileDTO,
@@ -133,6 +134,14 @@ export function moveFile(dto: MoveFileDTO) {
     targetDir: dto.targetDir,
     fileHandle: dto.fileHandle,
   })
+}
+
+/** 批量移动；部分失败仍 code=1，明细见 `MoveFilesVO.failed`。 */
+export function moveFiles(dtos: MoveFileDTO[]) {
+  return api.post<Result<MoveFilesVO>>(
+    '/file/moveFiles',
+    dtos.map((dto) => ({ path: dto.path, targetDir: dto.targetDir, fileHandle: dto.fileHandle })),
+  )
 }
 
 export function addStarFile(dto: StarFileDTO) {

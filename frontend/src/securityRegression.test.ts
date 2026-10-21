@@ -27,15 +27,20 @@ describe('前端安全回归', () => {
 
   it('主上传入口在入队前校验文件名', () => {
     const drive = source('./views/drive/CloudDrive.vue')
-    const queueUpload = drive.slice(
-      drive.indexOf('async function queueUpload'),
+    const queueUploads = drive.slice(
+      drive.indexOf('async function queueUploads'),
       drive.indexOf('async function queueDownload'),
     )
 
-    expect(queueUpload).toContain('decodeFileName(file.name)')
-    expect(queueUpload).toContain('isLegalFileName(finalName)')
-    expect(queueUpload.indexOf('isLegalFileName(finalName)')).toBeLessThan(
-      queueUpload.indexOf('transfers.enqueueUpload'),
+    expect(queueUploads).toContain('decodeFileName(item.file.name)')
+    expect(queueUploads).toContain('isLegalFileName(finalName)')
+    expect(queueUploads.indexOf('isLegalFileName(finalName)')).toBeLessThan(
+      queueUploads.indexOf('transfers.enqueueUpload'),
+    )
+    // 文件夹上传的相对目录段也要逐段净化后才能拼进服务端路径
+    expect(queueUploads).toContain('sanitizePathSegments(item.dirSegments')
+    expect(queueUploads.indexOf('sanitizePathSegments(item.dirSegments')).toBeLessThan(
+      queueUploads.indexOf('transfers.enqueueUpload'),
     )
   })
 

@@ -90,6 +90,30 @@ export interface CreatShareLinkDTO {
 
 export interface CreatShareLinkVO {
   shareKey: string
+  /** true = 同一用户同一路径已有未过期码，沿用并续期；缺省/false = 新建。 */
+  reused?: boolean
+}
+
+/** `moveFiles` 部分失败仍 code=1，失败项在 failed 里。 */
+export interface MoveFilesVO {
+  moved: number
+  failed: Array<{ path: string; code: number }>
+}
+
+export function readMoveFilesVO(data: unknown): MoveFilesVO | null {
+  const row = asRecord(data)
+  if (!row || typeof row.moved !== 'number' || !Array.isArray(row.failed)) {
+    return null
+  }
+  const failed: MoveFilesVO['failed'] = []
+  for (const entry of row.failed) {
+    const item = asRecord(entry)
+    if (!item || typeof item.code !== 'number') {
+      return null
+    }
+    failed.push({ path: typeof item.path === 'string' ? item.path : '', code: item.code })
+  }
+  return { moved: row.moved, failed }
 }
 
 export interface LinkDTO {

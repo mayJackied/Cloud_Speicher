@@ -1,17 +1,32 @@
 <template>
   <ArchiveFrame fill :clock="false">
-    <div class="transfer-shell">
-      <DriveSidebar
-        active="transfers"
-        @open-mine="goDrive('mine')"
-        @open-public="goDrive('public')"
-        @open-root="goDrive('root')"
-        @open-trash="goDrive('trash')"
-        @open-starred="goDrive('starred')"
-        @open-shared="goDrive('shared')"
-        @note-offline="noteOffline"
-        @logout="signOut"
+    <div class="transfer-shell" :class="{ 'is-nav-open': navOpen }">
+      <button
+        type="button"
+        class="transfer-nav-toggle"
+        :aria-expanded="navOpen"
+        :aria-label="t('drive.menu')"
+        @click="navOpen = !navOpen"
+      >{{ navOpen ? t('drive.menuClose') : t('drive.menu') }}</button>
+      <div
+        v-if="navOpen"
+        class="transfer-nav-mask"
+        aria-hidden="true"
+        @click="navOpen = false"
       />
+      <div class="transfer-side" @click="onSideNavClick">
+        <DriveSidebar
+          active="transfers"
+          @open-mine="goDrive('mine')"
+          @open-public="goDrive('public')"
+          @open-root="goDrive('root')"
+          @open-trash="goDrive('trash')"
+          @open-starred="goDrive('starred')"
+          @open-shared="goDrive('shared')"
+          @note-offline="noteOffline"
+          @logout="signOut"
+        />
+      </div>
 
       <main class="transfer-main">
         <header class="transfer-head">
@@ -185,7 +200,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import ArchiveFrame from '@/components/drive/ArchiveFrame.vue'
 import DriveSidebar from '@/components/drive/DriveSidebar.vue'
@@ -193,6 +208,7 @@ import { logout } from '@/api/auth'
 import { readApiMode } from '@/api/client'
 import { useDriveFiles } from '@/composables/useDriveFiles'
 import { useI18n } from '@/composables/useI18n'
+import { useShellBreakpoints } from '@/composables/useShellBreakpoints'
 import { useAuthStore } from '@/stores/auth'
 import { usePrefsStore } from '@/stores/prefs'
 import { transferProgress, useTransferStore } from '@/stores/transfers'
@@ -223,6 +239,8 @@ function isActiveStatus(status: TransferStatus) {
 }
 
 const { t } = useI18n()
+const { drawerNav } = useShellBreakpoints()
+const navOpen = ref(false)
 const router = useRouter()
 const auth = useAuthStore()
 const prefs = usePrefsStore()
@@ -233,6 +251,19 @@ const fallbackInput = ref<HTMLInputElement | null>(null)
 const pendingSourceTask = ref('')
 const offlineNote = ref('')
 const apiMode = readApiMode()
+
+watch(drawerNav, (narrow) => {
+  if (!narrow) {
+    navOpen.value = false
+  }
+})
+
+function onSideNavClick(event: MouseEvent) {
+  const el = event.target as HTMLElement | null
+  if (el?.closest('a, button')) {
+    navOpen.value = false
+  }
+}
 
 const filters = computed(() => [
   { value: 'all' as const, label: t('transfers.all'), count: transfers.tasks.length },
@@ -646,9 +677,74 @@ dd {
   display: none;
 }
 
-@media (max-width: 720px) {
+.transfer-nav-toggle {
+  display: none;
+}
+
+.transfer-nav-mask {
+  display: none;
+}
+
+@media (max-width: 1023px) {
   .transfer-shell {
     grid-template-columns: 1fr;
+  }
+
+  .transfer-nav-toggle {
+    position: fixed;
+    z-index: 28;
+    top: 0.75rem;
+    left: 0.75rem;
+    display: inline-flex;
+    align-items: center;
+    padding: 0.4rem 0.55rem;
+    border: 1px solid var(--arc-line);
+    background: rgb(8 25 35 / 92%);
+    color: var(--arc-lime);
+    font: inherit;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    cursor: pointer;
+  }
+
+  .transfer-nav-mask {
+    position: fixed;
+    inset: 0;
+    z-index: 26;
+    display: block;
+    background: rgb(6 19 27 / 55%);
+  }
+
+  .transfer-side {
+    position: fixed;
+    z-index: 27;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(16.5rem, 86vw);
+    transform: translateX(-105%);
+    transition: transform 180ms ease;
+    background: var(--arc-canvas-2);
+    border-right: 1px solid var(--arc-line);
+    box-shadow: 0.5rem 0 2rem rgb(0 0 0 / 28%);
+  }
+
+  .transfer-shell.is-nav-open .transfer-side {
+    transform: translateX(0);
+  }
+
+  .transfer-side :deep(.drive-side) {
+    height: 100%;
+    border-right: 0;
+  }
+
+  .transfer-main {
+    padding: 2.6rem 0.85rem 1.5rem;
+  }
+}
+
+@media (max-width: 720px) {
+  .transfer-shell {
     overflow: auto;
   }
 

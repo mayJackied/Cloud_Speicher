@@ -266,11 +266,6 @@ function onOver(slot: string, event: DragEvent) {
 @media (max-width: 720px) {
   .drive-side {
     border-right: 0;
-    border-bottom: 1px solid var(--arc-line);
-  }
-
-  .drive-side__nav {
-    flex-flow: row wrap;
   }
 }
 </style>

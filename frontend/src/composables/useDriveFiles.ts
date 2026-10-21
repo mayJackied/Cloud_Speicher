@@ -12,6 +12,7 @@ import {
   getFiles,
   getStarredFiles,
   moveFile,
+  moveFiles,
   renameFile,
   unzipFile,
   uploadFile,
@@ -29,6 +30,7 @@ import {
   isLegalFileName,
   joinServerPath,
   readFileCatalogVO,
+  readMoveFilesVO,
   sanitizePathSegments,
   storagePathSegments,
   toServerPath,
@@ -734,6 +736,54 @@ export function useDriveFiles() {
     })
   }
 
+  /**
+   * 批量移动走后端 `moveFiles`。部分失败时 code 仍为 OK，返回明细由调用方出提示；
+   * 无论成败都刷新一次列表，已移走的条目不会留在原处。
+   */
+  async function moveItems(
+    nodes: readonly FilesVO[],
+    targetDir: string,
+  ): Promise<{ moved: number; failed: Array<{ name: string; code: number }> } | null> {
+    if (atRoot.value || !canWrite.value || nodes.length === 0) {
+      return null
+    }
+    if (nodes.some((node) => isProtectedRecycleBin(crumbs.value, node, auth.user?.userId))) {
+      message.value = '不能移动回收站'
+      return null
+    }
+    const dir = targetDir.trim()
+    if (!dir) {
+      message.value = '请填写目标目录'
+      return null
+    }
+    const targets = nodes.filter((node) => !isTrashMetaName(node.fileName))
+    let summary: { moved: number; failed: Array<{ name: string; code: number }> } | null = null
+    await mutate(async () => {
+      const { data } = await moveFiles(
+        targets.map((node) => ({
+          path: itemPath(node.fileName),
+          targetDir: dir,
+          fileHandle: FileHandle.DEFAULT,
+        })),
+      )
+      if (isResultShape(data) && data.code === ErrorCode.OK) {
+        const vo = readMoveFilesVO(data.data)
+        if (!vo) {
+          return { code: ErrorCode.EXCEPTION, data: null }
+        }
+        summary = {
+          moved: vo.moved,
+          failed: vo.failed.map((row) => ({
+            name: row.path.replace(/\\/g, '/').split('/').pop() || row.path,
+            code: row.code,
+          })),
+        }
+      }
+      return data
+    })
+    return summary
+  }
+
   /** 批量删除走后端 `deleteFiles`（List&lt;DeleteFileDTO&gt;）。 */
   async function trashItems(nodes: readonly FilesVO[]) {
     if (atRoot.value || !canWrite.value || nodes.length === 0) {
@@ -1029,17 +1079,23 @@ export function useDriveFiles() {
     return removed
   }
 
-  async function createShareKey(path: string, expireDuration = 24): Promise<string | null> {
-    let key: string | null = null
+  /** `reused` = 后端沿用了同路径未过期的码并续期。 */
+  async function createShareKey(
+    path: string,
+    expireDuration = 24,
+  ): Promise<{ key: string; reused: boolean } | null> {
+    let created: { key: string; reused: boolean } | null = null
     await mutate(async () => {
       const { data } = await creatShareLink({ shareFilePath: path, expireDuration })
       if (isResultShape(data) && data.code === ErrorCode.OK) {
-        const shareKey = (data.data as { shareKey?: unknown } | null)?.shareKey
-        key = typeof shareKey === 'string' ? shareKey : null
+        const vo = data.data as { shareKey?: unknown; reused?: unknown } | null
+        if (typeof vo?.shareKey === 'string') {
+          created = { key: vo.shareKey, reused: vo.reused === true }
+        }
       }
       return data
     }, { requireWrite: false })
-    return key
+    return created
   }
 
   function normalizeShareKey(raw: string): string {
@@ -1095,6 +1151,7 @@ export function useDriveFiles() {
     uploadPicked,
     downloadItem,
     moveItem,
+    moveItems,
     compressItem,
     extractItem,
     blobForItem,

@@ -310,12 +310,21 @@ async function onDelete() {
   .set__nav {
     flex-direction: row;
     flex-wrap: wrap;
+    gap: 0.55rem 0.9rem;
     border-right: 0;
     border-bottom: 1px solid var(--arc-line);
   }
 
   .set__back {
     margin-top: 0;
+  }
+
+  .set__main {
+    padding: 1.1rem 0.9rem 1.5rem;
+  }
+
+  .set__meta div {
+    grid-template-columns: 6rem 1fr;
   }
 }
 </style>

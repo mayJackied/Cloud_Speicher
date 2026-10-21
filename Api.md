@@ -141,16 +141,22 @@ VO: `Void`
 旧整包 `POST /api/file/uploadFile` **已移除**。前端 `uploadFile()` 现封装为：`initUpload` → 一次 `continuableUploadFile` → `closeUpload`。
 
 *init_upload*　POST `/api/file/initUpload`
-DTO: `InitUploadDTO { uploadFilePath }`（完整目标文件路径，例如 `../files/8/video.mp4`）
-VO: `Result<String>`（uploadKey / UUID）；后端在会话表同时记录目标路径
+DTO: `InitUploadDTO { uploadFilePath }`（完整目标文件路径，例如 `./files/8/video.mp4`；文件夹上传时为 `当前目录/相对路径`，如 `./files/8/docs/a/b.txt`）
+VO: `Result<String>`（uploadKey / UUID）；后端在会话表记录**最终实际路径**
+（本地 backend，2026-10-21，待合入现网）：
+- 路径空 → `30001`；文件名非法 → `20003`。
+- 父目录与目标都必须落在本人房间或 public 内（普通用户写 public、写 `files` 根、把文件建成房间根 → `20001`）。
+- 父目录不存在时逐级 `mkdirs`（文件夹上传方案 A）；路径上某段已是普通文件 → `20005`。
+- 目标已存在 → 自动编号（`a(1).txt`），**不再往已有文件后追加**；init 时先建空文件占名。
 
 *continuable_upload_file*　POST `/api/file/continuableUploadFile?uploadKey=&targetPath=`
 请求体：`application/octet-stream` 原始文件字节；`@ModelAttribute ContinuableUploadDTO` 只绑定查询参数 `{ uploadKey, targetPath }`。
 VO: `Result<Void>`  
-后端直接从 `HttpServletRequest.getInputStream()` 边收边追加到 init 登记的文件。网络中断时已收到部分仍会落盘；恢复前先查 size，再发送原文件剩余部分。当前实现若目标文件已存在会直接追加，前端/后端必须先处理重名，避免损坏原文件。
+后端直接从 `HttpServletRequest.getInputStream()` 边收边追加到 init 登记的文件。网络中断时已收到部分仍会落盘；恢复前先查 size，再发送原文件剩余部分。
+本地 backend：鉴权对象改为会话里登记的文件；`targetPath` 若传则必须等于该文件的父目录，否则 `30001`。文件夹上传时前端传的就是嵌套父目录。
 
 *get_uploaded_size*　GET `/api/file/getUploadedSize?uploadKey=`  
-VO: `Result<Long>`（已落盘字节，权威 offset）
+VO: `Result<Long>`（已落盘字节，权威 offset；文件不存在时返回 `0`）
 
 *close_upload*　POST `/api/file/closeUpload`  
 DTO: `{ uploadKey }`  
@@ -180,9 +186,9 @@ VO: `List<StarredFileVO>`（`{ starFilePath }`）
 
 *creat_share_link*　POST `/api/file/creatShareLink`
 DTO: `CreatShareLinkDTO { shareFilePath, expireDuration }`（小时）
-VO: `CreatShareLinkVO { shareKey }`
-注意后端路径和类型名当前就是 `creat`。`075193e` 的 `expireDuration=0` 默认时长分支写反；前端暂发 `24`。本地 backend 已改按小时计算（0/空→`defaultExpireDuration`），待合入现网。
-**规划（领取稳定后）：** 同一用户同一路径若已有未过期码则返回原码且不刷新 `expireTime`；否则新建。
+VO: `CreatShareLinkVO { shareKey, reused }`
+注意后端路径和类型名当前就是 `creat`。`expireDuration` 按**小时**：0/空 → `defaultExpireDuration`（24），上限 720（30 天）。前端发 `24`。
+**复用（本地 backend 2026-10-21 已实现，待合入现网）：** 同一 JWT 用户 + 同一 `shareFilePath` 若已有未过期码 → 返回原 `shareKey`、`reused: true`，并把 `expireTime` 刷新为 `now + expireDuration`；否则新建 UUID 码、`reused: false`。前端据此提示「沿用并续期」或「新建」。
 
 *add_share_file_by_share_link*　POST `/api/file/addShareFileByShareLink`
 DTO: `LinkDTO { link }`
@@ -192,7 +198,7 @@ VO: `SharedFileVO`；无效/过期 → `20010`，已使用 → `20011`。成功�
 *delete_shared_file*　POST `/api/file/deleteSharedFile`
 DTO: `LinkDTO { link }`
 VO: `Result<Void>`；撤销该码并删除所有通过该码建立的共享记录，接收者之后不再可见。
-**安全要求：** 必须先校验 `share_file_links.sharer_id == JWT user_id`。`cdf6773` 尚未校验且未领取过时会因删除数为 0 错报 `30001`；本地 backend 已修，部署前前端不开放撤销按钮。
+**安全要求：** 必须先校验 `share_file_links.sharer_id == JWT user_id`（码行已被清掉时退回看领取记录）。非分享者 → `20001`；码不存在 → `20010`；`link` 空 → `30001`；未被领取过也可成功撤销。本地 backend 已修，部署前前端不开放撤销按钮。
 
 *zip*　POST `/api/file/zip`  
 DTO: `ZipFileDTO` `{ path, targetDir }`（驼峰；`targetDir` 必须是文件夹，空字符串 = 源文件父目录）  
@@ -206,8 +212,13 @@ VO: `Result<Void>`
 
 *move_file*　POST `/api/file/moveFile`  
 DTO: `MoveFileDTO` `{ path, targetDir, fileHandle }`  
-`targetDir` 禁止为空。`fileHandle`：0 默认不处理（同名则 20006）；1 替换；2 忽略；部分后端还有 7（末尾编号）。前端一般发 0，且**暂不支持批量移动**。  
+`targetDir` 禁止为空。`fileHandle`：0/空 默认不处理（同名则 20006）；1 替换；2 忽略；7 末尾编号；其它值按 0 处理。不能移到原位或移进自身/子目录 → `20005`。前端一般发 0。  
 VO: `Result<Void>`
+
+*move_files*　POST `/api/file/moveFiles`（本地 backend 2026-10-21 新增，待合入现网）  
+DTO: `List<MoveFileDTO>`，每项字段同 `moveFile`。  
+VO: `MoveFilesVO { moved, failed: [{ path, code }] }`  
+逐项沿用 `moveFile` 的鉴权、撞名与自身/子目录校验。**部分失败仍 `code=1`**，失败项在 `failed`；空列表 → `30001`。非事务：前面成功的不回滚。前端多选移动走此接口，按 `failed` 提示成功数与失败文件名。
 
 *delete_bin_file*　POST `/api/file/deleteBinFile`  
 DTO: `{ path }`（须在回收站路径下）  
@@ -234,7 +245,7 @@ VO: `Void`
 
 错误码补充：`20007` 回收站禁止、`20008` 上传 KEY 不存在、`20009` 已收藏、`20010` 分享码无效、`20011` 分享码已使用、`30001` 传参有误。
 
-待闭环（见 `备忘录.md`「当前阻塞 / 下一步」）：大文件上传现网手测；分享码领取 `20010`；领取通后再做「同文件未过期码复用、不刷新过期时间」。
+待闭环（见 `备忘录.md`「当前阻塞 / 下一步」与 `claude-任务包.md`）：大文件上传现网手测；分享码领取 `20010`；领取通后再做「同用户同路径未过期码复用，并刷新 `expireTime`」。前端 Phase A（浏览器响应式、多文件上传入队）已完成；文件夹上传 / 批量移动 API 仍待后端。
 
 ---
 
@@ -429,13 +440,15 @@ VO: `Void`
 Legacy `POST /api/file/uploadFile` is **removed**. Frontend `uploadFile()` now wraps `initUpload` → one `continuableUploadFile` → `closeUpload`.
 
 *init_upload*　POST `/api/file/initUpload`
-Body: `InitUploadDTO { uploadFilePath }` — complete destination file path, e.g. `../files/8/video.mp4`
+Body: `InitUploadDTO { uploadFilePath }` — complete destination file path, e.g. `./files/8/video.mp4`; for folder upload `currentDir/relative/path`
 VO: `Result<String>` (uploadKey)
+Local backend (2026-10-21, not deployed yet): parent and target must be inside the caller's room or public (else `20001`); missing parent folders are created; a path segment that is a regular file → `20005`; an existing target gets a numeric suffix instead of being appended to.
 
 *continuable_upload_file*　POST `/api/file/continuableUploadFile?uploadKey=&targetPath=`
 Body: raw `application/octet-stream`; `ContinuableUploadDTO { uploadKey, targetPath }` is bound from query parameters.
 VO: `Result<Void>`
 The server appends bytes as they arrive. After a disconnect, query the persisted size and resend only the remaining `File.slice(offset)`.
+Local backend: permission is checked on the session's registered file; if `targetPath` is sent it must equal that file's parent directory, else `30001`.
 
 *get_uploaded_size*　GET `/api/file/getUploadedSize?uploadKey=`  
 VO: `Result<Long>`
@@ -463,9 +476,9 @@ VO: `List<StarredFileVO>` (`{ starFilePath }`)
 
 *creat_share_link*　POST `/api/file/creatShareLink`
 DTO: `CreatShareLinkDTO { shareFilePath, expireDuration }` (hours)
-VO: `CreatShareLinkVO { shareKey }`
-The backend currently spells the endpoint and types as `creat`. In `075193e`, `expireDuration=0` creates an immediately expired key; the frontend sends `24` for now. Local backend patch computes hours from `expireDuration` (0/empty → `defaultExpireDuration`); deploy before relying on it.
-**Planned after redeem works:** if the same user already has a non-expired key for the same path, return that key without refreshing `expireTime`; otherwise create a new one.
+VO: `CreatShareLinkVO { shareKey, reused }`
+The backend spells the endpoint and types as `creat`. `expireDuration` is in **hours** (0/empty → `defaultExpireDuration` = 24, capped at 720). The frontend sends `24`.
+**Reuse (local backend 2026-10-21, not deployed yet):** same JWT user + same `shareFilePath` with a non-expired key → returns that key with `reused: true` and refreshes `expireTime` to `now + expireDuration`; otherwise a new key with `reused: false`.
 
 *add_share_file_by_share_link*　POST `/api/file/addShareFileByShareLink`
 DTO: `LinkDTO { link }`
@@ -474,7 +487,7 @@ Redeem still intermittently returns `20010` even when a row was inserted — see
 
 *delete_shared_file*　POST `/api/file/deleteSharedFile`
 DTO: `LinkDTO { link }`. Revokes the key and removes all recipient records created from it.
-The backend must verify the JWT user is the key's `sharerId`. Commit `cdf6773` does not; the local backend patch adds this check and makes an unused key revocable.
+The backend must verify the JWT user is the key's `sharerId` (non-sharer → `20001`, unknown key → `20010`, empty link → `30001`). The local backend patch adds this check and makes an unused key revocable.
 
 *zip*　POST `/api/file/zip`  
 DTO: `ZipFileDTO` `{ path, targetDir }` (camelCase; `targetDir` must be a folder; empty string = parent of source)  
@@ -488,8 +501,12 @@ VO: `Result<Void>`
 
 *move_file*　POST `/api/file/moveFile`  
 DTO: `MoveFileDTO` `{ path, targetDir, fileHandle }`  
-`targetDir` must not be empty. `fileHandle`: 0 default / no-op (duplicate → 20006); 1 replace; 2 ignore; some backends also use 7 (numeric suffix). Frontend usually sends 0 and **does not batch-move** yet.  
+`targetDir` must not be empty. `fileHandle`: 0/empty default (duplicate → 20006); 1 replace; 2 ignore; 7 numeric suffix; anything else behaves like 0. Moving onto itself or into its own subfolder → `20005`.  
 VO: `Result<Void>`
+
+*move_files*　POST `/api/file/moveFiles` (local backend 2026-10-21, not deployed yet)  
+DTO: `List<MoveFileDTO>`  
+VO: `MoveFilesVO { moved, failed: [{ path, code }] }` — each item uses `moveFile` rules. **Partial failure still returns `code=1`** with details in `failed`; empty list → `30001`. Not transactional. The frontend uses it for multi-select move.
 
 *delete_bin_file*　POST `/api/file/deleteBinFile`  
 DTO: `{ path }` (must be under recycle bin)  
