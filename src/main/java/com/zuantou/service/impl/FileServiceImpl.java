@@ -324,7 +324,7 @@ public class FileServiceImpl implements FileService {
         return Result.success(uuid);
     }
 
-    public Result<String> initUploadFolder(InitUploadFolderDTO initUploadFolderDTO){
+    public Result<String> initUploadFolder(InitUploadFolderDTO initUploadFolderDTO) {
         String uuid = UUID.randomUUID().toString();
         try {
             uploadFolderMapper.insert(new UploadFolder(uuid, initUploadFolderDTO.getUploadFilePath(), objectMapper.writeValueAsString(initUploadFolderDTO.getInitUploadFolders().toString())));
@@ -487,9 +487,8 @@ public class FileServiceImpl implements FileService {
         if (errorCode != null) {
             return Result.error(errorCode);
         }
-        if (!creatShareLinkDTO.isNewLink()){
-            ShareFileLink shareFileLink = shareFileLinkMapper.selectOne(new LambdaQueryWrapper<ShareFileLink>().eq(ShareFileLink::getShareFilePath, creatShareLinkDTO.getShareFilePath()).eq(ShareFileLink::getSharerId, UserContext.getUserId()));
-
+        ShareFileLink shareFileLink = shareFileLinkMapper.selectOne(new LambdaQueryWrapper<ShareFileLink>().eq(ShareFileLink::getShareFilePath, creatShareLinkDTO.getShareFilePath()).eq(ShareFileLink::getSharerId, UserContext.getUserId()));
+        if (shareFileLink != null) {
             return Result.success(new CreatShareLinkVO(shareFileLink.getShareLink(), shareFileLink.getExpireTime()));
         }
 
@@ -539,12 +538,12 @@ public class FileServiceImpl implements FileService {
     @Override
     public Result<Void> deleteSharedFile(LinkDTO linkDTO) {
         String link = linkDTO.getLink();
-        if (!Objects.equals(UserContext.getUserId(), sharedFileMapper.selectOne(new LambdaQueryWrapper<SharedFile>().eq(SharedFile::getShareLink, link)).getSharerId())){
+        if (!Objects.equals(UserContext.getUserId(), sharedFileMapper.selectOne(new LambdaQueryWrapper<SharedFile>().eq(SharedFile::getShareLink, link)).getSharerId())) {
             return Result.error(ErrorCode.NO_PERMISSION);
         }
         int i = sharedFileMapper.delete(new LambdaQueryWrapper<SharedFile>().eq(SharedFile::getShareLink, link));
         shareFileLinkMapper.deleteById(link);
-        if (i == 0){
+        if (i == 0) {
             return Result.error(ErrorCode.ARGS_ILLEGAL);
         }
         return Result.success();
