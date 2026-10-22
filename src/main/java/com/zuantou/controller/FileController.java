@@ -133,8 +133,24 @@ public class FileController {
 
 
     @PostMapping("/initUploadFolder")
-    public Result<String> initUploadFolder(@RequestBody InitUploadFolderDTO initUploadFolderDTO){
-        return fileService.initUploadFolder(initUploadFolderDTO);
+    public Result<String> initUploadFolder(@RequestBody List<InitUploadFolderDTO> initUploadFolderDTOS){
+        return fileService.initUploadFolder(initUploadFolderDTOS);
+    }
+    @PostMapping("/uploadFolder")
+    public Result<Void> uploadFolder(@RequestBody ContinuableUploadDTO continuableUploadDTO, HttpServletRequest request){
+        return fileService.uploadFolder(continuableUploadDTO,request);
+    }
+    @PostMapping("/getUploadedFolderStatus")
+    public Result<List<GetUploadedFolderStatusVO>> getUploadedFolderStatus(@RequestBody GetUploadedSizeDTO getUploadedSizeDTO){
+        return fileService.getUploadedFolderStatus(getUploadedSizeDTO);
+    }
+    @PostMapping("/closeUploadFolder")
+    public Result<Void> closeUploadFolder(@RequestBody CloseUploadDTO closeUploadDTO){
+        return fileService.closeUploadFolder(closeUploadDTO);
+    }
+    @PostMapping("/closeOneUpload")
+    public Result<Void> closeOneUpload(@RequestBody CloseOneUploadDTO closeOneUploadDTO){
+        return fileService.closeOneUpload(closeOneUploadDTO);
     }
 
     public FileController(FileService fileService) {

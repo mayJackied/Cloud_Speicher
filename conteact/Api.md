@@ -136,4 +136,32 @@ VO: Result<SharedFileVO>
 post: /api/file/deleteSharedFile
 DTO: LinkDTO link
 VO: Result<Void>
+
+
+
+*init_upload_folder*
+post: /api/file/initUploadFolder
+DTO: List<InitUploadFolderDTO> initUploadFolderDTOS
+VO: Result<String>
+
+*upload_folder*
+post: /api/file/uploadFolder
+DTO: ContinuableUploadDTO continuableUploadDTO
+VO: Result<Void>
+
+*get_uploaded_folder_status*
+post: /api/file/getUploadedFolderStatus
+DTO: GetUploadedSizeDTO getUploadedSizeDTO
+VO: Result<List<GetUploadedFolderStatusVO>>
+
+*close_upload_folder*
+post: /api/file/closeUploadFolder
+DTO: CloseUploadDTO closeUploadDTO
+VO: Result<Void>
+
+*close_one_upload*
+post: /api/file/closeOneUpload
+DTO: CloseOneUploadDTO closeOneUploadDTO
+VO: Result<Void>
+
 }

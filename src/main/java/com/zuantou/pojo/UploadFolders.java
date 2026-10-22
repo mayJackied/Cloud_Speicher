@@ -13,6 +13,5 @@ import lombok.NoArgsConstructor;
 public class UploadFolders {
     @TableId
     private String uploadKey;
-    private String uploadFilePath;
     private String content;
 }

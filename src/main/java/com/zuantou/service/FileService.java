@@ -34,7 +34,7 @@ public interface FileService {
 
     Result<String> initUpload(InitUploadDTO initUploadDTO);
 
-    Result<String> initUploadFolder(InitUploadFolderDTO initUploadFolderDTO);
+    Result<String> initUploadFolder(List<InitUploadFolderDTO> initUploadFolderDTOS);
 
     Result<Void> continuableUpload(ContinuableUploadDTO continuableUploadDTO, HttpServletRequest request);
 
@@ -42,7 +42,13 @@ public interface FileService {
 
     Result<Long> getUploadedSize(GetUploadedSizeDTO getUploadedSizeDTO);
 
+    Result<List<GetUploadedFolderStatusVO>> getUploadedFolderStatus(GetUploadedSizeDTO getUploadedSizeDTO);
+
     Result<Void> closeUpload(CloseUploadDTO closeUploadDTO);
+
+    Result<Void> closeUploadFolder(CloseUploadDTO closeUploadDTO);
+
+    Result<Void> closeOneUpload(CloseOneUploadDTO closeOneUploadDTO);
 
     Result<Long> getDownloadFileSize(String path);
 

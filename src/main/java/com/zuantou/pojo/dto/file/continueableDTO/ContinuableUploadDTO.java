@@ -5,8 +5,8 @@ import lombok.Data;
 @Data
 public class ContinuableUploadDTO {
     /**
-     * targetPath 为上传文件的文件夹
+     * filePath 为上传文件的路径
      */
     private String uploadKey;
-    private String targetPath;
+    private String filePath;
 }

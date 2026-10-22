@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zuantou.Application;
 import com.zuantou.common.utils.FileUtil;
 import com.zuantou.mapper.file.ShareFileLinkMapper;
-import com.zuantou.pojo.FilePath;
 import com.zuantou.pojo.ShareFileLink;
 import com.zuantou.pojo.UploadFolder;
 import com.zuantou.pojo.vo.FileListVO;
@@ -353,10 +352,6 @@ public class test {
                 new TypeReference<List<UploadFolder>>() {}
         );
 
-        List<FilePath> filePath = FileUtil.getFilePath(content);
-        for (FilePath path : filePath) {
-            System.out.println(path);
-        }
     }
 
 }

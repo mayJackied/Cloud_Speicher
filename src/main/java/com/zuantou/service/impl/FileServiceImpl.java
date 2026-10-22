@@ -2,6 +2,8 @@ package com.zuantou.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zuantou.common.exception.BusinessException;
 import com.zuantou.common.properties.CommonProperties;
@@ -325,20 +327,21 @@ public class FileServiceImpl implements FileService {
     }
 
     @Override
-    public Result<String> initUploadFolder(InitUploadFolderDTO initUploadFolderDTO) {
-        Integer errorCode = checkFilePermission(initUploadFolderDTO.getUploadFilePath(), OTHER, CommonProperties.COMMON_PATH_OPERATION);
-        if (errorCode != null) {
-            return Result.error(errorCode);
+    public Result<String> initUploadFolder(List<InitUploadFolderDTO> initUploadFolderDTOS) {
+        for (InitUploadFolderDTO initUploadFolderDTO : initUploadFolderDTOS) {
+            Integer errorCode = checkFilePermission(initUploadFolderDTO.getUploadFilePath(), OTHER, CommonProperties.COMMON_PATH_OPERATION);
+            if (errorCode != null) {
+                return Result.error(errorCode);
+            }
         }
         String uuid = UUID.randomUUID().toString();
         List<UploadFolder> content = new ArrayList<>();
-        BeanUtils.copyProperties(initUploadFolderDTO.getInitUploadFolders(), content);
+        BeanUtils.copyProperties(initUploadFolderDTOS, content);
         try {
-            uploadFoldersMapper.insert(new UploadFolders(uuid, initUploadFolderDTO.getUploadFilePath(), objectMapper.writeValueAsString(content)));
+            uploadFoldersMapper.insert(new UploadFolders(uuid, objectMapper.writeValueAsString(content)));
 
-            List<FilePath> filePath = FileUtil.getFilePath(content);
-            for (FilePath path : filePath) {
-                File f = new File(path.getPath());
+            for (UploadFolder path : content) {
+                File f = new File(path.getUploadFilePath());
                 if (path.isFile()) {
                     if (!f.exists() && !f.createNewFile()) throw new BusinessException(ErrorCode.EXCEPTION);
                 } else {
@@ -353,34 +356,44 @@ public class FileServiceImpl implements FileService {
 
     @Override
     public Result<Void> continuableUpload(ContinuableUploadDTO continuableUploadDTO, HttpServletRequest request) {
-        Integer errorCode = checkFilePermission(continuableUploadDTO.getTargetPath(), OTHER, CommonProperties.COMMON_PATH_OPERATION);
-        if (errorCode != null) {
-            return Result.error(errorCode);
-        }
-
         ContinuableUpload continuableUpload = continuableUploadMapper.selectById(continuableUploadDTO.getUploadKey());
 
         if (continuableUpload == null) {
             return Result.error(ErrorCode.UPLOAD_KEY_NOT_FOUND);
         }
 
-        return upload(request, continuableUpload.getUploadFilePath());
+        return upload(request, continuableUploadDTO.getFilePath());
     }
 
     @Override
     public Result<Void> uploadFolder(ContinuableUploadDTO continuableUploadDTO, HttpServletRequest request){
-        Integer errorCode = checkFilePermission(continuableUploadDTO.getTargetPath(), OTHER, CommonProperties.COMMON_PATH_OPERATION);
-        if (errorCode != null) {
-            return Result.error(errorCode);
-        }
-
         UploadFolders uploadFolders = uploadFoldersMapper.selectById(continuableUploadDTO.getUploadKey());
 
         if (uploadFolders == null) {
             return Result.error(ErrorCode.UPLOAD_KEY_NOT_FOUND);
         }
 
-        return upload(request, uploadFolders.getUploadFilePath());
+        try {
+            List<UploadFolder> uploadList = objectMapper.readValue(uploadFolders.getContent(), new TypeReference<>() {} );
+            boolean change = false;
+            for (UploadFolder uploadFolder : uploadList) {
+                if (uploadFolder.getUploadFilePath().equals(continuableUploadDTO.getFilePath())){
+                    if (uploadFolder.getStatus() == 2){
+                        return Result.error(ErrorCode.UPLOADED_FILE);
+                    }
+                    uploadFolder.setStatus(1);
+                    change = true;
+                }
+            }
+            if (!change){
+                return Result.error(ErrorCode.FILE_NOT_FOUND);
+            }
+            uploadFoldersMapper.updateById(new UploadFolders(continuableUploadDTO.getUploadKey(),objectMapper.writeValueAsString(uploadList)));
+        } catch (JsonProcessingException e) {
+            throw new BusinessException(ErrorCode.EXCEPTION);
+        }
+
+        return upload(request, continuableUploadDTO.getFilePath());
     }
 
     @NotNull
@@ -404,16 +417,50 @@ public class FileServiceImpl implements FileService {
 
     @Override
     public Result<Long> getUploadedSize(GetUploadedSizeDTO getUploadedSizeDTO) {
+        ContinuableUpload continuableUpload = continuableUploadMapper.selectById(getUploadedSizeDTO.getUploadKey());
+        if (continuableUpload == null) {
+            return Result.error(ErrorCode.UPLOAD_KEY_NOT_FOUND);
+        }
+        try {
+            String path = continuableUpload.getUploadFilePath();
+            if (path == null || path.isEmpty()) {
+                return Result.success(0L);
+            }
+            return Result.success(Files.size(Path.of(path)));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public Result<List<GetUploadedFolderStatusVO>> getUploadedFolderStatus(GetUploadedSizeDTO getUploadedSizeDTO) {
         UploadFolders uploadFolders = uploadFoldersMapper.selectById(getUploadedSizeDTO.getUploadKey());
         if (uploadFolders == null) {
             return Result.error(ErrorCode.UPLOAD_KEY_NOT_FOUND);
         }
         try {
-            String path = uploadFolders.getUploadFilePath();
-            if (path == null || path.isEmpty()) {
-                return Result.success(0L);
+            String content = uploadFolders.getContent();
+
+            List<UploadFolder> uploadList = objectMapper.readValue(content, new TypeReference<>() {} );
+
+            List<GetUploadedFolderStatusVO> getUploadedFolderStatusVOS = new ArrayList<>();
+            for (UploadFolder uploadFolder : uploadList) {
+                if (uploadFolder.getStatus() == 0){
+                    getUploadedFolderStatusVOS.add(new GetUploadedFolderStatusVO(uploadFolder.getUploadFilePath(), 0, 0L));
+                    continue;
+                }
+                if (uploadFolder.getStatus() == 2){
+                    getUploadedFolderStatusVOS.add(new GetUploadedFolderStatusVO(uploadFolder.getUploadFilePath(), 2, -1L));
+                    continue;
+                }
+                String path = uploadFolder.getUploadFilePath();
+                if (path.isEmpty()) {
+                    getUploadedFolderStatusVOS.add(new GetUploadedFolderStatusVO(uploadFolder.getUploadFilePath(), 0, 0L));
+                }
+                getUploadedFolderStatusVOS.add(new GetUploadedFolderStatusVO(uploadFolder.getUploadFilePath(), 0, Files.size(Path.of(path))));
             }
-            return Result.success(Files.size(Path.of(path)));
+
+            return Result.success(getUploadedFolderStatusVOS);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -429,6 +476,44 @@ public class FileServiceImpl implements FileService {
         continuableUploadMapper.deleteById(continuableUpload.getUploadKey());
         return Result.success();
     }
+
+    @Override
+    public Result<Void> closeUploadFolder(CloseUploadDTO closeUploadDTO) {
+        UploadFolders uploadFolders = uploadFoldersMapper.selectById(closeUploadDTO.getUploadKey());
+        if (uploadFolders == null) {
+            return Result.error(ErrorCode.UPLOAD_KEY_NOT_FOUND);
+        }
+        continuableUploadMapper.deleteById(uploadFolders.getUploadKey());
+        return Result.success();
+    }
+
+    @Override
+    public Result<Void> closeOneUpload(CloseOneUploadDTO closeOneUploadDTO) {
+        UploadFolders uploadFolders = uploadFoldersMapper.selectById(closeOneUploadDTO.getUploadKey());
+        if (uploadFolders == null) {
+            return Result.error(ErrorCode.UPLOAD_KEY_NOT_FOUND);
+        }
+        List<UploadFolder> uploadList;
+        try {
+            uploadList = objectMapper.readValue(uploadFolders.getContent(), new TypeReference<>() {} );
+            boolean change = false;
+            for (UploadFolder uploadFolder : uploadList) {
+                if (uploadFolder.getUploadFilePath().equals(closeOneUploadDTO.getFilePath())){
+                    uploadFolder.setStatus(2);
+                    change = true;
+                }
+            }
+            if (!change){
+                return Result.error(ErrorCode.FILE_NOT_FOUND);
+            }
+            uploadFoldersMapper.updateById(new UploadFolders(closeOneUploadDTO.getUploadKey(),objectMapper.writeValueAsString(uploadList)));
+        } catch (JsonProcessingException e) {
+            throw new BusinessException(ErrorCode.EXCEPTION);
+        }
+
+        return Result.success();
+    }
+
 
     @Override
     public Result<Long> getDownloadFileSize(String path) {

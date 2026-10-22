@@ -31,6 +31,7 @@
 | 20009 | FILE_STARRED                 | 文件已被收藏                    |
 | 20010 | SHARE_LINK_INVALID           | 无效的分享链接                   |
 | 20011 | SHARE_LINK_USED              | 链接已被使用                    |
+| 20012 | UPLOADED_FILE                | 文件已被下载                    |
 |       |                              |                           |
 | 30001 | ARGS_ILLEGAL                 | 传参有误                      |
 

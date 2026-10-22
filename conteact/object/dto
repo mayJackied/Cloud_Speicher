@@ -24,7 +24,7 @@ CloseUploadDTO { String uploadKey }
 
 ContinuableDownloadDTO {String downloadFilePath; Long downloadedSize; int DownloadType} Tipp: DownloadType = 0: 首次下载, 1: 断点重连
 
-ContinuableUploadDTO {String uploadKey; String targetPath; } Tipp: targetPath 为上传文件的文件夹
+ContinuableUploadDTO { private String uploadKey; private String filePath; } Tipp: filePath 为上传文件的路径
 
 GetUploadedSizeDTO { String uploadKey }
 
@@ -33,3 +33,16 @@ StarFileDTO { private String starFilePath }
 CreatShareLinkDTO { boolean isNewLink; String shareFilePath; Double expireDuration } Tipp: 单位为小时 如果为0的话就是默认24小时
 
 LinkDTO { String link }
+
+
+
+InitUploadFolderDTO {
+    @JsonProperty("is_file")
+    private boolean file;
+    private String uploadFilePath;
+}
+
+CloseOneUploadDTO {
+    private String uploadKey;
+    private String filePath;
+}
