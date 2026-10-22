@@ -7,6 +7,8 @@ import java.util.List;
 
 @Data
 public class InitUploadFolderDTO {
+    @JsonProperty("is_file")
+    private boolean file;
     private String uploadFilePath;
     private List<InitUploadFolder> initUploadFolders;
 

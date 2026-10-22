@@ -1,18 +1,24 @@
 package com.zuantou.pojo;
 
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableName;
-import lombok.AllArgsConstructor;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
-import lombok.NoArgsConstructor;
+
+import java.util.List;
 
 @Data
-@AllArgsConstructor
-@NoArgsConstructor
-@TableName("upload_folder")
 public class UploadFolder {
-    @TableId
-    private String uploadKey;
+    @JsonProperty("is_file")
+    private boolean file;
     private String uploadFilePath;
-    private String content;
+    private int status; // 0 未下载, 1 正在正在下载, 2 下载完成
+    private List<UploadFolder.Folder> initUploadFolders;
+
+    @Data
+    public static class Folder{
+        @JsonProperty("is_file")
+        private boolean file;
+        private String fileName;
+        private int status; // 0 未下载, 1 正在正在下载, 2 下载完成
+        private List<UploadFolder.Folder> initUploadFolders;
+    }
 }

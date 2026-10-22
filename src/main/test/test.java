@@ -1,10 +1,18 @@
 
+import com.alibaba.fastjson.JSONObject;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zuantou.Application;
+import com.zuantou.common.utils.FileUtil;
 import com.zuantou.mapper.file.ShareFileLinkMapper;
+import com.zuantou.pojo.FilePath;
 import com.zuantou.pojo.ShareFileLink;
+import com.zuantou.pojo.UploadFolder;
+import com.zuantou.pojo.vo.FileListVO;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
-
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.*;
 import java.net.HttpURLConnection;
@@ -268,6 +276,87 @@ public class test {
         }
 
         conn.disconnect();
+    }
+
+    @Test
+    public void FileTest() throws JsonProcessingException {
+        String json = "[\n" +
+                "  {\n" +
+                "    \"is_file\": false,\n" +
+                "    \"uploadFilePath\": \"document\",\n" +
+                "    \"status\": 0,\n" +
+                "    \"initUploadFolders\": [\n" +
+                "      {\n" +
+                "        \"is_file\": true,\n" +
+                "        \"fileName\": \"a.txt\",\n" +
+                "        \"status\": 2,\n" +
+                "        \"initUploadFolders\": null\n" +
+                "      },\n" +
+                "      {\n" +
+                "        \"is_file\": true,\n" +
+                "        \"fileName\": \"b.pdf\",\n" +
+                "        \"status\": 0,\n" +
+                "        \"initUploadFolders\": null\n" +
+                "      },\n" +
+                "      {\n" +
+                "        \"is_file\": false,\n" +
+                "        \"fileName\": \"images\",\n" +
+                "        \"status\": 0,\n" +
+                "        \"initUploadFolders\": [\n" +
+                "          {\n" +
+                "            \"is_file\": true,\n" +
+                "            \"fileName\": \"c.png\",\n" +
+                "            \"status\": 1,\n" +
+                "            \"initUploadFolders\": null\n" +
+                "          },\n" +
+                "          {\n" +
+                "            \"is_file\": false,\n" +
+                "            \"fileName\": \"icons\",\n" +
+                "            \"status\": 0,\n" +
+                "            \"initUploadFolders\": [\n" +
+                "              {\n" +
+                "                \"is_file\": true,\n" +
+                "                \"fileName\": \"logo.svg\",\n" +
+                "                \"status\": 0,\n" +
+                "                \"initUploadFolders\": null\n" +
+                "              }\n" +
+                "            ]\n" +
+                "          }\n" +
+                "        ]\n" +
+                "      },\n" +
+                "      {\n" +
+                "        \"is_file\": false,\n" +
+                "        \"fileName\": \"empty\",\n" +
+                "        \"status\": 0,\n" +
+                "        \"initUploadFolders\": []\n" +
+                "      }\n" +
+                "    ]\n" +
+                "  },\n" +
+                "  {\n" +
+                "    \"is_file\": false,\n" +
+                "    \"uploadFilePath\": \"music\",\n" +
+                "    \"status\": 0,\n" +
+                "    \"initUploadFolders\": [\n" +
+                "      {\n" +
+                "        \"is_file\": false,\n" +
+                "        \"fileName\": \"song\",\n" +
+                "        \"status\": 0,\n" +
+                "        \"initUploadFolders\": null\n" +
+                "      }\n" +
+                "    ]\n" +
+                "  }\n" +
+                "]";
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        List<UploadFolder> content = objectMapper.readValue(
+                json,
+                new TypeReference<List<UploadFolder>>() {}
+        );
+
+        List<FilePath> filePath = FileUtil.getFilePath(content);
+        for (FilePath path : filePath) {
+            System.out.println(path);
+        }
     }
 
 }

@@ -2,7 +2,6 @@ package com.zuantou.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zuantou.common.exception.BusinessException;
 import com.zuantou.common.properties.CommonProperties;
@@ -21,6 +20,7 @@ import com.zuantou.service.FileService;
 import com.zuantou.common.utils.FileUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 
@@ -39,7 +39,7 @@ public class FileServiceImpl implements FileService {
     private final StarredFileMapper starredFileMapper;
     private final ShareFileLinkMapper shareFileLinkMapper;
     private final SharedFileMapper sharedFileMapper;
-    private final UploadFolderMapper uploadFolderMapper;
+    private final UploadFoldersMapper uploadFoldersMapper;
 
     ObjectMapper objectMapper = new ObjectMapper();
 
@@ -324,11 +324,28 @@ public class FileServiceImpl implements FileService {
         return Result.success(uuid);
     }
 
+    @Override
     public Result<String> initUploadFolder(InitUploadFolderDTO initUploadFolderDTO) {
+        Integer errorCode = checkFilePermission(initUploadFolderDTO.getUploadFilePath(), OTHER, CommonProperties.COMMON_PATH_OPERATION);
+        if (errorCode != null) {
+            return Result.error(errorCode);
+        }
         String uuid = UUID.randomUUID().toString();
+        List<UploadFolder> content = new ArrayList<>();
+        BeanUtils.copyProperties(initUploadFolderDTO.getInitUploadFolders(), content);
         try {
-            uploadFolderMapper.insert(new UploadFolder(uuid, initUploadFolderDTO.getUploadFilePath(), objectMapper.writeValueAsString(initUploadFolderDTO.getInitUploadFolders().toString())));
-        } catch (JsonProcessingException e) {
+            uploadFoldersMapper.insert(new UploadFolders(uuid, initUploadFolderDTO.getUploadFilePath(), objectMapper.writeValueAsString(content)));
+
+            List<FilePath> filePath = FileUtil.getFilePath(content);
+            for (FilePath path : filePath) {
+                File f = new File(path.getPath());
+                if (path.isFile()) {
+                    if (!f.exists() && !f.createNewFile()) throw new BusinessException(ErrorCode.EXCEPTION);
+                } else {
+                    if (!f.mkdirs() && !f.isDirectory()) throw new BusinessException(ErrorCode.EXCEPTION);
+                }
+            }
+        } catch (RuntimeException | IOException e) {
             throw new RuntimeException(e);
         }
         return Result.success(uuid);
@@ -347,7 +364,28 @@ public class FileServiceImpl implements FileService {
             return Result.error(ErrorCode.UPLOAD_KEY_NOT_FOUND);
         }
 
-        File uploadFilePath = new File(continuableUpload.getUploadFilePath());
+        return upload(request, continuableUpload.getUploadFilePath());
+    }
+
+    @Override
+    public Result<Void> uploadFolder(ContinuableUploadDTO continuableUploadDTO, HttpServletRequest request){
+        Integer errorCode = checkFilePermission(continuableUploadDTO.getTargetPath(), OTHER, CommonProperties.COMMON_PATH_OPERATION);
+        if (errorCode != null) {
+            return Result.error(errorCode);
+        }
+
+        UploadFolders uploadFolders = uploadFoldersMapper.selectById(continuableUploadDTO.getUploadKey());
+
+        if (uploadFolders == null) {
+            return Result.error(ErrorCode.UPLOAD_KEY_NOT_FOUND);
+        }
+
+        return upload(request, uploadFolders.getUploadFilePath());
+    }
+
+    @NotNull
+    private Result<Void> upload(HttpServletRequest request, String uploadFilePath2) {
+        File uploadFilePath = new File(uploadFilePath2);
 
         try (InputStream input = request.getInputStream();
              FileOutputStream output = new FileOutputStream(uploadFilePath, true)) {
@@ -366,12 +404,12 @@ public class FileServiceImpl implements FileService {
 
     @Override
     public Result<Long> getUploadedSize(GetUploadedSizeDTO getUploadedSizeDTO) {
-        ContinuableUpload continuableUpload = continuableUploadMapper.selectById(getUploadedSizeDTO.getUploadKey());
-        if (continuableUpload == null) {
+        UploadFolders uploadFolders = uploadFoldersMapper.selectById(getUploadedSizeDTO.getUploadKey());
+        if (uploadFolders == null) {
             return Result.error(ErrorCode.UPLOAD_KEY_NOT_FOUND);
         }
         try {
-            String path = continuableUpload.getUploadFilePath();
+            String path = uploadFolders.getUploadFilePath();
             if (path == null || path.isEmpty()) {
                 return Result.success(0L);
             }
@@ -380,6 +418,7 @@ public class FileServiceImpl implements FileService {
             throw new RuntimeException(e);
         }
     }
+
 
     @Override
     public Result<Void> closeUpload(CloseUploadDTO closeUploadDTO) {
@@ -705,7 +744,7 @@ public class FileServiceImpl implements FileService {
     private final int IN_PUBLIC_PATH_OR_SHARED_FILE_ALLOWED_OPERATION = 0;
     private final int OTHER = 1;
 
-    public FileServiceImpl(MyValFileProperties fileProperties, UserMapper userMapper, DeleteBinFileSourceMapper deleteBinFileSourceMapper, ContinuableUploadMapper continuableUploadMapper, StarredFileMapper starredFileMapper, ShareFileLinkMapper shareFileMapper, SharedFileMapper sharedFileMapper, UploadFolderMapper uploadFolderMapper) {
+    public FileServiceImpl(MyValFileProperties fileProperties, UserMapper userMapper, DeleteBinFileSourceMapper deleteBinFileSourceMapper, ContinuableUploadMapper continuableUploadMapper, StarredFileMapper starredFileMapper, ShareFileLinkMapper shareFileMapper, SharedFileMapper sharedFileMapper, UploadFoldersMapper uploadFoldersMapper) {
         this.fileProperties = fileProperties;
         this.userMapper = userMapper;
         this.deleteBinFileSourceMapper = deleteBinFileSourceMapper;
@@ -713,6 +752,6 @@ public class FileServiceImpl implements FileService {
         this.starredFileMapper = starredFileMapper;
         this.shareFileLinkMapper = shareFileMapper;
         this.sharedFileMapper = sharedFileMapper;
-        this.uploadFolderMapper = uploadFolderMapper;
+        this.uploadFoldersMapper = uploadFoldersMapper;
     }
 }

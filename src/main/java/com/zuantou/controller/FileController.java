@@ -1,11 +1,8 @@
 package com.zuantou.controller;
 import com.zuantou.pojo.dto.file.LinkDTO;
+import com.zuantou.pojo.dto.file.continueableDTO.*;
 import com.zuantou.pojo.vo.*;
 import com.zuantou.pojo.dto.file.*;
-import com.zuantou.pojo.dto.file.continueableDTO.CloseUploadDTO;
-import com.zuantou.pojo.dto.file.continueableDTO.ContinuableDownloadDTO;
-import com.zuantou.pojo.dto.file.continueableDTO.ContinuableUploadDTO;
-import com.zuantou.pojo.dto.file.continueableDTO.GetUploadedSizeDTO;
 import com.zuantou.service.FileService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -132,6 +129,12 @@ public class FileController {
     @PostMapping("/deleteSharedFile")
     public Result<Void> deleteSharedFile(@RequestBody LinkDTO link){
         return fileService.deleteSharedFile(link);
+    }
+
+
+    @PostMapping("/initUploadFolder")
+    public Result<String> initUploadFolder(@RequestBody InitUploadFolderDTO initUploadFolderDTO){
+        return fileService.initUploadFolder(initUploadFolderDTO);
     }
 
     public FileController(FileService fileService) {

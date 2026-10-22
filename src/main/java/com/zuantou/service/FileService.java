@@ -1,12 +1,9 @@
 package com.zuantou.service;
 
 import com.zuantou.pojo.dto.file.LinkDTO;
+import com.zuantou.pojo.dto.file.continueableDTO.*;
 import com.zuantou.pojo.vo.*;
 import com.zuantou.pojo.dto.file.*;
-import com.zuantou.pojo.dto.file.continueableDTO.CloseUploadDTO;
-import com.zuantou.pojo.dto.file.continueableDTO.ContinuableDownloadDTO;
-import com.zuantou.pojo.dto.file.continueableDTO.ContinuableUploadDTO;
-import com.zuantou.pojo.dto.file.continueableDTO.GetUploadedSizeDTO;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -37,7 +34,11 @@ public interface FileService {
 
     Result<String> initUpload(InitUploadDTO initUploadDTO);
 
+    Result<String> initUploadFolder(InitUploadFolderDTO initUploadFolderDTO);
+
     Result<Void> continuableUpload(ContinuableUploadDTO continuableUploadDTO, HttpServletRequest request);
+
+    Result<Void> uploadFolder(ContinuableUploadDTO continuableUploadDTO, HttpServletRequest request);
 
     Result<Long> getUploadedSize(GetUploadedSizeDTO getUploadedSizeDTO);
 
