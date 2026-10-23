@@ -15,16 +15,20 @@ import {
   saveTransferRecord,
 } from '@/utils/transferDb'
 import {
+  allocateFolderUploadKey,
   allocateUploadKey,
   downloadContinuableWithProgress,
+  finishFolderFile,
+  finishFolderUpload,
   finishUpload,
+  probeFolderFile,
   probeUploadedSize,
   pushUploadChunk,
 } from '@/api/transfers'
 import { closeUpload } from '@/api/files'
 import { isResultShape } from '@/dev/contract'
 import { ErrorCode } from '@/types/errorCode'
-import { joinServerPath } from '@/types/file'
+import { joinServerPath, type InitUploadFolderDTO } from '@/types/file'
 import { isAxiosError } from 'axios'
 
 /** 仅用于离线模拟；在线模式一次发送整文件或断点后的全部剩余内容。 */
@@ -50,6 +54,10 @@ function transferId(): string {
 
 function isTerminal(status: TransferStatus): boolean {
   return status === 'completed' || status === 'canceled'
+}
+
+function isActive(status: TransferStatus): boolean {
+  return status === 'running' || status === 'waiting_backend'
 }
 
 function needsImmediatePersist(status: TransferStatus): boolean {
@@ -100,6 +108,8 @@ export const useTransferStore = defineStore('transfers', () => {
   const tasks = ref<TransferTask[]>([])
   const hydrated = ref(false)
   const ownerId = ref(0)
+  /** 已调过 closeUploadFolder 的文件夹 key，避免重复关闭。 */
+  const closedFolderKeys = new Set<string>()
   const lastCompletedUpload = ref<{ id: string; targetPath: string; fileName: string; at: number } | null>(
     null,
   )
@@ -161,7 +171,37 @@ export const useTransferStore = defineStore('transfers', () => {
     } else {
       scheduleProgressPersist(id)
     }
+    if (statusChanged && task.folderGroupId && !isActive(task.status)) {
+      const groupId = task.folderGroupId
+      queueMicrotask(() => settleFolderGroup(groupId))
+    }
     return task
+  }
+
+  /**
+   * 文件夹组内逐个上传：当前没有在跑的就启动下一个 queued；
+   * 全部完成 / 取消后关闭整个文件夹会话。失败项留着等重试，不关会话。
+   */
+  function settleFolderGroup(groupId: string) {
+    const group = tasks.value.filter((task) => task.folderGroupId === groupId)
+    if (group.length === 0) {
+      return
+    }
+    if (group.every((task) => isTerminal(task.status))) {
+      const uploadKey = group[0]!.serverTransferId
+      if (uploadKey && readApiMode() === 'online' && !closedFolderKeys.has(uploadKey)) {
+        closedFolderKeys.add(uploadKey)
+        void finishFolderUpload(uploadKey).catch(() => undefined)
+      }
+      return
+    }
+    if (group.some((task) => isActive(task.status))) {
+      return
+    }
+    const next = group.find((task) => task.status === 'queued')
+    if (next) {
+      begin(next.id)
+    }
   }
 
   function scheduleProgressPersist(id: string) {
@@ -361,10 +401,216 @@ export const useTransferStore = defineStore('transfers', () => {
       return
     }
     if (task.direction === 'upload') {
-      await runOnlineUpload(id)
+      await (task.folderGroupId ? runOnlineFolderUpload(id) : runOnlineUpload(id))
       return
     }
     await runOnlineDownload(id)
+  }
+
+  function codeOf(result: unknown, fallback: number): number {
+    return isResultShape(result) ? result.code : fallback
+  }
+
+  /**
+   * 从 offset 起把剩余字节一次发完；请求中断时查服务端已落盘字节再续。
+   * 'done' = 已到文件尾；'stopped' = 已中止或已记失败。网络异常抛给调用方。
+   */
+  async function streamRemaining(options: {
+    id: string
+    file: File
+    controller: AbortController
+    offset: number
+    push: (
+      from: number,
+      onProgress?: (loaded: number, requestBytes: number) => void,
+    ) => Promise<{ ok: boolean; nextOffset: number; result?: unknown }>
+    probe: () => Promise<{ ok: boolean; nextOffset?: number }>
+  }): Promise<'done' | 'stopped'> {
+    const { id, file, controller } = options
+    let offset = options.offset
+    let recoveryAttempts = 0
+
+    if (file.size === 0) {
+      const empty = await options.push(0)
+      if (!empty.ok) {
+        failTask(id, codeOf(empty.result, ErrorCode.FILE_OPERATION_FAILED))
+        return 'stopped'
+      }
+      return controller.signal.aborted ? 'stopped' : 'done'
+    }
+
+    while (offset < file.size) {
+      if (controller.signal.aborted) {
+        return 'stopped'
+      }
+      const startedAt = Date.now()
+      const previous = offset
+      let pushed
+      try {
+        pushed = await options.push(offset, (loaded, requestBytes) => {
+          if (controller.signal.aborted) {
+            return
+          }
+          const transferred = Math.min(file.size, previous + loaded)
+          const elapsed = Math.max((Date.now() - startedAt) / 1000, 0.001)
+          const speedBps = Math.round(loaded / elapsed)
+          const left = Math.max(0, file.size - transferred)
+          const waitingForBackend = loaded >= requestBytes
+          patchTask(id, {
+            status: waitingForBackend ? 'waiting_backend' : 'running',
+            transferredBytes: transferred,
+            nextOffset: transferred,
+            speedBps: waitingForBackend ? 0 : speedBps,
+            remainingSeconds:
+              !waitingForBackend && speedBps > 0 ? Math.ceil(left / speedBps) : null,
+          })
+        })
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return 'stopped'
+        }
+        // 请求体可能已写入，但响应在代理/隧道处断开。查询服务端实际字节，
+        // 再按断点重连继续，避免重复追加或直接报 99999。
+        const recovered = await options.probe()
+        const next = recovered.nextOffset ?? -1
+        if (!recovered.ok || next < 0 || next > file.size) {
+          throw error
+        }
+        recoveryAttempts = next > previous ? 0 : recoveryAttempts + 1
+        if (recoveryAttempts > 3) {
+          throw error
+        }
+        offset = next
+        patchTask(id, {
+          transferredBytes: offset,
+          nextOffset: offset,
+          speedBps: 0,
+          remainingSeconds: null,
+        })
+        continue
+      }
+      if (!pushed.ok) {
+        failTask(id, codeOf(pushed.result, ErrorCode.FILE_OPERATION_FAILED))
+        return 'stopped'
+      }
+      recoveryAttempts = 0
+      // 正常上传一次即到文件尾；查断点仅用于暂停/中断后的恢复。
+      offset = pushed.nextOffset
+      const elapsed = Math.max((Date.now() - startedAt) / 1000, 0.001)
+      const speedBps = Math.round((offset - previous) / elapsed)
+      const left = Math.max(0, file.size - offset)
+      patchTask(id, {
+        transferredBytes: offset,
+        nextOffset: offset,
+        speedBps,
+        remainingSeconds: speedBps > 0 ? Math.ceil(left / speedBps) : null,
+      })
+    }
+    return controller.signal.aborted ? 'stopped' : 'done'
+  }
+
+  /** 文件夹内单个文件：共用文件夹 key，按 filePath 上传；续传前查 getUploadedFolderStatus。 */
+  async function runOnlineFolderUpload(id: string) {
+    const file = sourceFiles.get(id)
+    if (!file) {
+      patchTask(id, { status: 'needs_source', speedBps: 0, remainingSeconds: null })
+      return
+    }
+    stopRuntime(id)
+    const controller = new AbortController()
+    controllers.set(id, controller)
+    const task = patchTask(id, {
+      status: 'running',
+      errorCode: undefined,
+      errorMessage: undefined,
+      chunkSize: DEFAULT_CHUNK_SIZE,
+    })
+    if (!task) {
+      return
+    }
+    const uploadKey = task.serverTransferId
+    const filePath = task.serverFilePath
+    if (!uploadKey || !filePath) {
+      failTask(id, ErrorCode.UPLOAD_KEY_NOT_FOUND)
+      return
+    }
+
+    try {
+      let offset = 0
+      if (task.folderStarted) {
+        const probed = await probeFolderFile(uploadKey, filePath)
+        if (!probed.ok) {
+          failTask(id, codeOf(probed.result, ErrorCode.EXCEPTION))
+          return
+        }
+        if (probed.done) {
+          await finishFolderFile(uploadKey, filePath).catch(() => undefined)
+          completeUpload(id, file.size)
+          return
+        }
+        if (probed.nextOffset > file.size) {
+          failTask(id, ErrorCode.FILE_OPERATION_FAILED, 'SERVER_SIZE_EXCEEDS_SOURCE')
+          return
+        }
+        offset = probed.nextOffset
+      }
+      patchTask(id, { folderStarted: true, nextOffset: offset, transferredBytes: offset })
+
+      const streamed = await streamRemaining({
+        id,
+        file,
+        controller,
+        offset,
+        push: (from, onProgress) =>
+          pushUploadChunk({
+            uploadKey,
+            filePath,
+            file,
+            offset: from,
+            signal: controller.signal,
+            onProgress,
+            mode: 'folder',
+          }),
+        probe: async () => {
+          const probed = await probeFolderFile(uploadKey, filePath)
+          if (!probed.ok) {
+            return { ok: false }
+          }
+          return { ok: true, nextOffset: probed.done ? file.size : probed.nextOffset }
+        },
+      })
+      if (streamed !== 'done') {
+        return
+      }
+      const closed = await finishFolderFile(uploadKey, filePath)
+      if (!isResultShape(closed.data) || closed.data.code !== ErrorCode.OK) {
+        failTask(id, codeOf(closed.data, ErrorCode.FILE_OPERATION_FAILED))
+        return
+      }
+      completeUpload(id, file.size)
+    } catch (error) {
+      if (controller.signal.aborted) {
+        return
+      }
+      const code =
+        isAxiosError(error) && error.response && isResultShape(error.response.data)
+          ? error.response.data.code
+          : ErrorCode.EXCEPTION
+      failTask(id, code, isAxiosError(error) ? error.message : undefined)
+    } finally {
+      controllers.delete(id)
+    }
+  }
+
+  function completeUpload(id: string, size: number) {
+    patchTask(id, {
+      status: 'completed',
+      transferredBytes: size,
+      nextOffset: size,
+      speedBps: 0,
+      remainingSeconds: 0,
+    })
+    sourceFiles.delete(id)
   }
 
   async function runOnlineUpload(id: string) {
@@ -389,7 +635,6 @@ export const useTransferStore = defineStore('transfers', () => {
     try {
       let uploadKey = task.serverTransferId
       let offset = task.nextOffset
-      let recoveryAttempts = 0
       const uploadFilePath = joinServerPath(task.targetPath, file.name)
 
       if (!uploadKey) {
@@ -432,106 +677,23 @@ export const useTransferStore = defineStore('transfers', () => {
         }
       }
 
-      if (file.size === 0) {
-        const empty = await pushUploadChunk({
-          uploadKey,
-          targetPath: task.targetPath,
-          file,
-          offset: 0,
-        })
-        if (!empty.ok) {
-          const code = isResultShape(empty.result) ? empty.result.code : ErrorCode.FILE_OPERATION_FAILED
-          failTask(id, code)
-          return
-        }
-        await finishUpload(uploadKey)
-        patchTask(id, {
-          status: 'completed',
-          transferredBytes: 0,
-          nextOffset: 0,
-          speedBps: 0,
-          remainingSeconds: 0,
-        })
-        return
-      }
-
-      while (offset < file.size) {
-        if (controller.signal.aborted) {
-          return
-        }
-        const startedAt = Date.now()
-        const previous = offset
-        let pushed
-        try {
-          pushed = await pushUploadChunk({
+      const streamed = await streamRemaining({
+        id,
+        file,
+        controller,
+        offset,
+        push: (from, onProgress) =>
+          pushUploadChunk({
             uploadKey,
-            targetPath: task.targetPath,
+            filePath: uploadFilePath,
             file,
-            offset,
+            offset: from,
             signal: controller.signal,
-            onProgress: (loaded, requestBytes) => {
-              if (controller.signal.aborted) {
-                return
-              }
-              const transferred = Math.min(file.size, previous + loaded)
-              const elapsed = Math.max((Date.now() - startedAt) / 1000, 0.001)
-              const speedBps = Math.round(loaded / elapsed)
-              const left = Math.max(0, file.size - transferred)
-              const waitingForBackend = loaded >= requestBytes
-              patchTask(id, {
-                status: waitingForBackend ? 'waiting_backend' : 'running',
-                transferredBytes: transferred,
-                nextOffset: transferred,
-                speedBps: waitingForBackend ? 0 : speedBps,
-                remainingSeconds:
-                  !waitingForBackend && speedBps > 0 ? Math.ceil(left / speedBps) : null,
-              })
-            },
-          })
-        } catch (error) {
-          if (controller.signal.aborted) {
-            return
-          }
-          // 请求体可能已写入，但响应在代理/隧道处断开。查询服务端实际字节，
-          // 再按断点重连继续，避免重复追加或直接报 99999。
-          const recovered = await probeUploadedSize(uploadKey)
-          if (!recovered.ok || recovered.nextOffset < 0 || recovered.nextOffset > file.size) {
-            throw error
-          }
-          recoveryAttempts =
-            recovered.nextOffset > previous ? 0 : recoveryAttempts + 1
-          if (recoveryAttempts > 3) {
-            throw error
-          }
-          offset = recovered.nextOffset
-          patchTask(id, {
-            transferredBytes: offset,
-            nextOffset: offset,
-            speedBps: 0,
-            remainingSeconds: null,
-          })
-          continue
-        }
-        if (!pushed.ok) {
-          const code = isResultShape(pushed.result) ? pushed.result.code : ErrorCode.FILE_OPERATION_FAILED
-          failTask(id, code)
-          return
-        }
-        recoveryAttempts = 0
-        // 正常上传一次即到文件尾；getUploadedSize 仅用于暂停/中断后的恢复。
-        offset = pushed.nextOffset
-        const elapsed = Math.max((Date.now() - startedAt) / 1000, 0.001)
-        const speedBps = Math.round((offset - previous) / elapsed)
-        const left = Math.max(0, file.size - offset)
-        patchTask(id, {
-          transferredBytes: offset,
-          nextOffset: offset,
-          speedBps,
-          remainingSeconds: speedBps > 0 ? Math.ceil(left / speedBps) : null,
-        })
-      }
-
-      if (controller.signal.aborted) {
+            onProgress,
+          }),
+        probe: () => probeUploadedSize(uploadKey),
+      })
+      if (streamed !== 'done') {
         return
       }
       await finishUpload(uploadKey)
@@ -696,6 +858,84 @@ export const useTransferStore = defineStore('transfers', () => {
     return task
   }
 
+  /**
+   * 文件夹上传：先把所有文件夹（逐级）和文件登记给 initUploadFolder 拿一个 key，
+   * 再按文件建任务，组内逐个上传。baseDir 为当前目录的服务端路径，dirSegments 已净化。
+   */
+  async function enqueueFolderUpload(input: {
+    baseDir: string
+    items: ReadonlyArray<{ file: File; dirSegments: readonly string[] }>
+  }): Promise<{ ok: true; tasks: TransferTask[] } | { ok: false; code: number }> {
+    await hydrate()
+    if (input.items.length === 0) {
+      return { ok: false, code: ErrorCode.ARGS_ILLEGAL }
+    }
+    const base = input.baseDir.replace(/[\\/]+$/, '')
+    const dirEntries: InitUploadFolderDTO[] = []
+    const fileEntries: InitUploadFolderDTO[] = []
+    const seenDirs = new Set<string>()
+    const planned: Array<{ file: File; dirPath: string; filePath: string }> = []
+    for (const item of input.items) {
+      for (let depth = 1; depth <= item.dirSegments.length; depth += 1) {
+        const dirPath = [base, ...item.dirSegments.slice(0, depth)].join('/')
+        if (!seenDirs.has(dirPath)) {
+          seenDirs.add(dirPath)
+          dirEntries.push({ is_file: false, uploadFilePath: dirPath })
+        }
+      }
+      const dirPath = [base, ...item.dirSegments].join('/')
+      const filePath = joinServerPath(dirPath, item.file.name)
+      fileEntries.push({ is_file: true, uploadFilePath: filePath })
+      planned.push({ file: item.file, dirPath, filePath })
+    }
+
+    let uploadKey: string | undefined
+    if (readApiMode() === 'online') {
+      try {
+        const allocated = await allocateFolderUploadKey([...dirEntries, ...fileEntries])
+        if (!allocated.ok) {
+          return { ok: false, code: codeOf(allocated.result, ErrorCode.EXCEPTION) }
+        }
+        uploadKey = allocated.uploadKey
+      } catch (error) {
+        const code =
+          isAxiosError(error) && error.response && isResultShape(error.response.data)
+            ? error.response.data.code
+            : ErrorCode.EXCEPTION
+        return { ok: false, code }
+      }
+    }
+
+    const groupId = transferId()
+    const now = Date.now()
+    const created = planned.map<TransferTask>((entry) => ({
+      id: transferId(),
+      serverTransferId: uploadKey,
+      direction: 'upload',
+      status: 'queued',
+      fileName: entry.file.name,
+      totalBytes: entry.file.size,
+      transferredBytes: 0,
+      nextOffset: 0,
+      chunkSize: DEFAULT_CHUNK_SIZE,
+      sourcePath: entry.file.name,
+      targetPath: entry.dirPath,
+      saveLocation: entry.dirPath,
+      saveStrategy: 'browser-download',
+      speedBps: 0,
+      remainingSeconds: null,
+      createdAt: now,
+      updatedAt: now,
+      folderGroupId: groupId,
+      serverFilePath: entry.filePath,
+    }))
+    created.forEach((task, index) => sourceFiles.set(task.id, planned[index]!.file))
+    tasks.value.unshift(...created)
+    await Promise.all(created.map((task) => persist(task)))
+    settleFolderGroup(groupId)
+    return { ok: true, tasks: created }
+  }
+
   async function enqueueDownload(input: {
     fileName: string
     sourcePath: string
@@ -775,7 +1015,8 @@ export const useTransferStore = defineStore('transfers', () => {
     }
     stopRuntime(id)
     const uploadKey = task.serverTransferId
-    if (task.direction === 'upload' && uploadKey && readApiMode() === 'online') {
+    // 文件夹任务共用 key：单个取消不关会话，组内全部结束后由 settleFolderGroup 关。
+    if (task.direction === 'upload' && uploadKey && !task.folderGroupId && readApiMode() === 'online') {
       void closeUpload({ uploadKey }).catch(() => undefined)
     }
     patchTask(id, {
@@ -886,6 +1127,7 @@ export const useTransferStore = defineStore('transfers', () => {
     lastCompletedUpload,
     hydrate,
     enqueueUpload,
+    enqueueFolderUpload,
     enqueueDownload,
     pause,
     resume,

@@ -60,10 +60,35 @@ export interface ContinuableDownloadDTO {
   downloadType: DownloadTypeValue
 }
 
+/** 后端 2026-10 起 `targetPath` 改为 `filePath`：上传文件的完整路径（不是目录）。 */
 export interface ContinuableUploadDTO {
   uploadKey: string
-  targetPath: string
+  filePath: string
   file: File | Blob
+}
+
+/** `initUploadFolder` 列表项：所有要建的文件夹 + 要传的文件。 */
+export interface InitUploadFolderDTO {
+  is_file: boolean
+  uploadFilePath: string
+}
+
+export interface CloseOneUploadDTO {
+  uploadKey: string
+  filePath: string
+}
+
+/** 0 未开始；1 上传中（size = 已落盘字节）；2 已完成（size = -1）。 */
+export const FolderUploadStatus = {
+  PENDING: 0,
+  RUNNING: 1,
+  DONE: 2,
+} as const
+
+export interface GetUploadedFolderStatusVO {
+  uploadFilePath: string
+  status: number
+  size: number
 }
 
 export interface CloseUploadDTO {

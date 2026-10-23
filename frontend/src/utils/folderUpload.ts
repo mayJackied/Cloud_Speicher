@@ -1,5 +1,5 @@
 import { isLegalFileName, sanitizePathSegments } from '@/types/file'
-import { decodeFileName } from '@/utils/text'
+import { availableCopyName, decodeFileName } from '@/utils/text'
 
 export interface FolderUploadItem {
   file: File
@@ -39,4 +39,29 @@ export function planFolderUpload(
     items.push({ file, dirSegments })
   }
   return { items, skipped }
+}
+
+/**
+ * 顶层文件夹与当前目录已有条目重名时换成「名(1)」，整棵子树跟着改，
+ * 不往已有文件夹里合并（后端撞名语义未定，避免覆盖或追加到旧文件）。
+ */
+export function avoidTopFolderClash(
+  items: readonly FolderUploadItem[],
+  taken: Iterable<string>,
+): FolderUploadItem[] {
+  const used = new Set(taken)
+  const renamed = new Map<string, string>()
+  return items.map((item) => {
+    const top = item.dirSegments[0]
+    if (top === undefined) {
+      return item
+    }
+    let next = renamed.get(top)
+    if (next === undefined) {
+      next = availableCopyName(used, top)
+      used.add(next)
+      renamed.set(top, next)
+    }
+    return next === top ? item : { ...item, dirSegments: [next, ...item.dirSegments.slice(1)] }
+  })
 }

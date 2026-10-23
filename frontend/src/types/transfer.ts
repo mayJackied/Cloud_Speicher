@@ -38,6 +38,12 @@ export interface TransferTask {
   updatedAt: number
   /** 执行结束时间戳（ms）：完成 / 失败 / 取消。未结束则为 undefined。 */
   completedAt?: number
+  /** 文件夹上传分组（本地 id）；同组共用 serverTransferId（initUploadFolder 的 key），组内逐个上传。 */
+  folderGroupId?: string
+  /** 文件夹上传时该文件的完整服务端路径（uploadFolder / closeOneUpload 的 filePath）。 */
+  serverFilePath?: string
+  /** 已向服务端发过字节；续传前要先查 getUploadedFolderStatus。 */
+  folderStarted?: boolean
 }
 
 export interface FileSystemFileHandleLike {

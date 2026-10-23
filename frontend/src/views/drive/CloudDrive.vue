@@ -376,7 +376,7 @@ import { ErrorCode, messageForCode } from '@/types/errorCode'
 import { kindOf, needsPosterFrame, typeLabel } from '@/utils/fileKind'
 import { formatBytes, formatStamp } from '@/utils/formatFile'
 import { copyText } from '@/utils/clipboard'
-import { planFolderUpload } from '@/utils/folderUpload'
+import { avoidTopFolderClash, planFolderUpload, type FolderUploadItem } from '@/utils/folderUpload'
 import { remapStarredPaths } from '@/utils/starredCache'
 import { archivalDisplayName, decodeFileName } from '@/utils/text'
 import { canWriteInFolder } from '@/utils/driveAccess'
@@ -1157,15 +1157,18 @@ async function onFolderInput(event: Event) {
   const input = event.target as HTMLInputElement
   const plan = planFolderUpload(Array.from(input.files ?? []))
   input.value = ''
-  // 后端 initUpload 会按相对路径逐级建父目录；空文件夹浏览器不会给出，因此不会被创建。
-  await queueUploads(plan.items, plan.skipped)
+  await queueFolderUpload(plan.items, plan.skipped)
 }
 
-async function queueUploads(
-  items: Array<{ file: File; handle?: FileSystemFileHandleLike; dirSegments?: string[] }>,
-  preSkipped = 0,
-) {
-  if (items.length === 0 && preSkipped === 0) {
+/**
+ * 文件夹上传：整批交给 initUploadFolder 拿一个 key（文件夹逐级登记），组内逐个续传。
+ * 浏览器目录选择器不给空文件夹，所以空目录不会被创建。
+ */
+async function queueFolderUpload(items: readonly FolderUploadItem[], skipped: number) {
+  if (items.length === 0) {
+    if (skipped > 0) {
+      message.value = messageForCode(ErrorCode.FILE_NAME_ILLEGAL)
+    }
     return
   }
   const dir = sanitizePathSegments(crumbs.value)
@@ -1173,16 +1176,55 @@ async function queueUploads(
     message.value = messageForCode(ErrorCode.FILE_NAME_ILLEGAL)
     return
   }
-  let accepted = 0
-  let rejected = preSkipped
+  let rejected = skipped
+  const safe: FolderUploadItem[] = []
   for (const item of items) {
-    const finalName = decodeFileName(item.file.name)
-    const subDir = sanitizePathSegments(item.dirSegments ?? [])
-    if (!isLegalFileName(finalName) || !subDir) {
+    const subDir = sanitizePathSegments(item.dirSegments)
+    if (!isLegalFileName(decodeFileName(item.file.name)) || !subDir) {
       rejected += 1
       continue
     }
-    await transfers.enqueueUpload(item.file, toServerPath([...dir, ...subDir]), item.handle)
+    safe.push({ file: item.file, dirSegments: subDir })
+  }
+  if (safe.length === 0) {
+    message.value = messageForCode(ErrorCode.FILE_NAME_ILLEGAL)
+    return
+  }
+  const placed = avoidTopFolderClash(
+    safe,
+    currentItems.value.map((row) => row.fileName),
+  )
+  const queued = await transfers.enqueueFolderUpload({ baseDir: toServerPath(dir), items: placed })
+  if (!queued.ok) {
+    message.value = messageForCode(queued.code)
+    return
+  }
+  const folder = decodeFileName(placed[0]!.dirSegments[0] ?? '')
+  message.value =
+    rejected > 0
+      ? t('transfers.folderQueuedPartial', { folder, count: queued.tasks.length, skipped: rejected })
+      : t('transfers.folderQueued', { folder, count: queued.tasks.length })
+}
+
+async function queueUploads(items: Array<{ file: File; handle?: FileSystemFileHandleLike }>) {
+  if (items.length === 0) {
+    return
+  }
+  const dir = sanitizePathSegments(crumbs.value)
+  if (!dir) {
+    message.value = messageForCode(ErrorCode.FILE_NAME_ILLEGAL)
+    return
+  }
+  const target = toServerPath(dir)
+  let accepted = 0
+  let rejected = 0
+  for (const item of items) {
+    const finalName = decodeFileName(item.file.name)
+    if (!isLegalFileName(finalName)) {
+      rejected += 1
+      continue
+    }
+    await transfers.enqueueUpload(item.file, target, item.handle)
     accepted += 1
   }
   if (accepted === 0) {

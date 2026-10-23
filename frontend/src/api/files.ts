@@ -1,7 +1,10 @@
 import { api } from './client'
 import type {
+  CloseOneUploadDTO,
   CloseUploadDTO,
   ContinuableDownloadDTO,
+  GetUploadedFolderStatusVO,
+  InitUploadFolderDTO,
   ContinuableUploadDTO,
   CreatShareLinkDTO,
   CreatShareLinkVO,
@@ -61,7 +64,7 @@ export function continuableUploadFile(
     onUploadProgress: opts?.onProgress,
     params: {
       uploadKey: dto.uploadKey,
-      targetPath: dto.targetPath,
+      filePath: dto.filePath,
     },
     headers: {
       'Content-Type': 'application/octet-stream',
@@ -78,10 +81,50 @@ export function closeUpload(dto: CloseUploadDTO) {
   return api.post<Result<null>>('/file/closeUpload', dto)
 }
 
+/** 文件夹上传：一次登记全部文件夹与文件，返回整个文件夹共用的 uploadKey。 */
+export function initUploadFolder(dtos: InitUploadFolderDTO[]) {
+  return api.post<Result<string>>('/file/initUploadFolder', dtos)
+}
+
+/** 文件夹内单个文件的原始字节流；参数与 continuableUploadFile 相同（uploadKey + filePath）。 */
+export function uploadFolderFile(
+  dto: ContinuableUploadDTO,
+  opts?: {
+    onProgress?: (event: AxiosProgressEvent) => void
+    signal?: AbortSignal
+  },
+) {
+  return api.post<Result<null>>('/file/uploadFolder', dto.file, {
+    timeout: 0,
+    signal: opts?.signal,
+    onUploadProgress: opts?.onProgress,
+    params: {
+      uploadKey: dto.uploadKey,
+      filePath: dto.filePath,
+    },
+    headers: {
+      'Content-Type': 'application/octet-stream',
+    },
+  })
+}
+
+export function getUploadedFolderStatus(dto: { uploadKey: string }) {
+  return api.post<Result<GetUploadedFolderStatusVO[]>>('/file/getUploadedFolderStatus', dto)
+}
+
+export function closeOneUpload(dto: CloseOneUploadDTO) {
+  return api.post<Result<null>>('/file/closeOneUpload', dto)
+}
+
+export function closeUploadFolder(dto: CloseUploadDTO) {
+  return api.post<Result<null>>('/file/closeUploadFolder', dto)
+}
+
 /** 兼容旧整包上传调用：init → 一次 continuable → close。 */
 export async function uploadFile(dir: string, file: File) {
   const utf8File = asUtf8UploadFile(file)
-  const init = await initUpload(joinServerPath(dir, utf8File.name))
+  const filePath = joinServerPath(dir, utf8File.name)
+  const init = await initUpload(filePath)
   if (!isResultShape(init.data) || init.data.code !== ErrorCode.OK || !init.data.data) {
     return init
   }
@@ -89,7 +132,7 @@ export async function uploadFile(dir: string, file: File) {
   try {
     const uploaded = await continuableUploadFile({
       uploadKey,
-      targetPath: dir,
+      filePath,
       file: utf8File,
     })
     await closeUpload({ uploadKey })

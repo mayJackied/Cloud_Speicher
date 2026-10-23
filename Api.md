@@ -141,19 +141,15 @@ VO: `Void`
 旧整包 `POST /api/file/uploadFile` **已移除**。前端 `uploadFile()` 现封装为：`initUpload` → 一次 `continuableUploadFile` → `closeUpload`。
 
 *init_upload*　POST `/api/file/initUpload`
-DTO: `InitUploadDTO { uploadFilePath }`（完整目标文件路径，例如 `./files/8/video.mp4`；文件夹上传时为 `当前目录/相对路径`，如 `./files/8/docs/a/b.txt`）
-VO: `Result<String>`（uploadKey / UUID）；后端在会话表记录**最终实际路径**
-（本地 backend，2026-10-21，待合入现网）：
-- 路径空 → `30001`；文件名非法 → `20003`。
-- 父目录与目标都必须落在本人房间或 public 内（普通用户写 public、写 `files` 根、把文件建成房间根 → `20001`）。
-- 父目录不存在时逐级 `mkdirs`（文件夹上传方案 A）；路径上某段已是普通文件 → `20005`。
-- 目标已存在 → 自动编号（`a(1).txt`），**不再往已有文件后追加**；init 时先建空文件占名。
+DTO: `InitUploadDTO { uploadFilePath }`（完整目标文件路径，例如 `./files/8/video.mp4`）
+VO: `Result<String>`（uploadKey / UUID）；后端在会话表同时记录目标路径
+文件夹上传不走这里，见下方「文件夹断点上传」。
 
-*continuable_upload_file*　POST `/api/file/continuableUploadFile?uploadKey=&targetPath=`
-请求体：`application/octet-stream` 原始文件字节；`@ModelAttribute ContinuableUploadDTO` 只绑定查询参数 `{ uploadKey, targetPath }`。
+*continuable_upload_file*　POST `/api/file/continuableUploadFile?uploadKey=&filePath=`
+请求体：`application/octet-stream` 原始文件字节；`@ModelAttribute ContinuableUploadDTO` 只绑定查询参数 `{ uploadKey, filePath }`。
+**2026-10-22 后端改动：** `ContinuableUploadDTO` 的 `targetPath`（目录）改为 `filePath`（上传文件的**完整路径**，与 init 的 `uploadFilePath` 相同）。前端已同步。
 VO: `Result<Void>`  
 后端直接从 `HttpServletRequest.getInputStream()` 边收边追加到 init 登记的文件。网络中断时已收到部分仍会落盘；恢复前先查 size，再发送原文件剩余部分。
-本地 backend：鉴权对象改为会话里登记的文件；`targetPath` 若传则必须等于该文件的父目录，否则 `30001`。文件夹上传时前端传的就是嵌套父目录。
 
 *get_uploaded_size*　GET `/api/file/getUploadedSize?uploadKey=`  
 VO: `Result<Long>`（已落盘字节，权威 offset；文件不存在时返回 `0`）
@@ -161,6 +157,19 @@ VO: `Result<Long>`（已落盘字节，权威 offset；文件不存在时返回 
 *close_upload*　POST `/api/file/closeUpload`  
 DTO: `{ uploadKey }`  
 VO: `Result<Void>`（删除上传会话行）
+
+*文件夹断点上传*（后端 2026-10-22 补丁；前端已对接）
+1. `POST /api/file/initUploadFolder` — DTO: `List<InitUploadFolderDTO>`，`InitUploadFolderDTO { "is_file": boolean, uploadFilePath }`。一次登记整个文件夹：所有文件夹（前端逐级列出，父在前）+ 所有文件，路径均为完整服务端路径（如 `./files/8/docs`、`./files/8/docs/a.txt`）。VO: `Result<String>`（整个文件夹共用的 uploadKey）。
+2. `POST /api/file/uploadFolder?uploadKey=&filePath=` — 请求体为该文件的原始字节（`application/octet-stream`，同 `continuableUploadFile`）；`filePath` = 该文件完整路径。
+3. 中断后 `POST /api/file/getUploadedFolderStatus` — DTO: `GetUploadedSizeDTO { uploadKey }`；VO: `List<GetUploadedFolderStatusVO { uploadFilePath, status, size }>`，`status` 0 未开始 / 1 进行中（`size` = 已落盘字节）/ 2 已完成（`size = -1`）。前端按 `uploadFilePath` 找到该文件，从 `size` 起发送剩余字节；比较路径时忽略 `./` 前缀与 `\`、`/` 差异。
+4. 每个文件传完 `POST /api/file/closeOneUpload` — DTO: `CloseOneUploadDTO { uploadKey, filePath }`。
+5. 全部传完 `POST /api/file/closeUploadFolder` — DTO: `CloseUploadDTO { uploadKey }`。
+
+前端约定（后端未明确的项按此假设实现，待确认）：
+- `uploadFolder` 与 `continuableUploadFile` 同格式：原始字节流，`uploadKey`、`filePath` 走查询参数。
+- 组内文件**逐个**上传；单个取消不关会话；组内全部完成/取消后才调 `closeUploadFolder`，有失败项时会话保持以便重试。
+- 顶层文件夹与当前目录已有条目重名时，前端先改成 `名(1)` 再登记，不合并进旧文件夹。
+- 空文件夹：浏览器目录选择器拿不到，不会登记。
 
 *get_download_file_size*　GET `/api/file/getDownloadFileSize?path=`
 VO: `Result<Long>`（下载前查询服务端实际文件大小）
@@ -440,15 +449,13 @@ VO: `Void`
 Legacy `POST /api/file/uploadFile` is **removed**. Frontend `uploadFile()` now wraps `initUpload` → one `continuableUploadFile` → `closeUpload`.
 
 *init_upload*　POST `/api/file/initUpload`
-Body: `InitUploadDTO { uploadFilePath }` — complete destination file path, e.g. `./files/8/video.mp4`; for folder upload `currentDir/relative/path`
-VO: `Result<String>` (uploadKey)
-Local backend (2026-10-21, not deployed yet): parent and target must be inside the caller's room or public (else `20001`); missing parent folders are created; a path segment that is a regular file → `20005`; an existing target gets a numeric suffix instead of being appended to.
+Body: `InitUploadDTO { uploadFilePath }` — complete destination file path, e.g. `./files/8/video.mp4`
+VO: `Result<String>` (uploadKey). Folder uploads use the folder endpoints below.
 
-*continuable_upload_file*　POST `/api/file/continuableUploadFile?uploadKey=&targetPath=`
-Body: raw `application/octet-stream`; `ContinuableUploadDTO { uploadKey, targetPath }` is bound from query parameters.
+*continuable_upload_file*　POST `/api/file/continuableUploadFile?uploadKey=&filePath=`
+Body: raw `application/octet-stream`; `ContinuableUploadDTO { uploadKey, filePath }` is bound from query parameters. Since 2026-10-22 `filePath` is the full file path (it replaced the old `targetPath` directory).
 VO: `Result<Void>`
 The server appends bytes as they arrive. After a disconnect, query the persisted size and resend only the remaining `File.slice(offset)`.
-Local backend: permission is checked on the session's registered file; if `targetPath` is sent it must equal that file's parent directory, else `30001`.
 
 *get_uploaded_size*　GET `/api/file/getUploadedSize?uploadKey=`  
 VO: `Result<Long>`
@@ -456,6 +463,15 @@ VO: `Result<Long>`
 *close_upload*　POST `/api/file/closeUpload`  
 DTO: `{ uploadKey }`  
 VO: `Result<Void>`
+
+*Resumable folder upload* (backend patch 2026-10-22; frontend wired)
+1. `POST /api/file/initUploadFolder` — body `List<InitUploadFolderDTO { "is_file", uploadFilePath }>` listing every folder (each level, parents first) and every file with full server paths. Returns one `uploadKey` for the whole folder.
+2. `POST /api/file/uploadFolder?uploadKey=&filePath=` — raw bytes of one file; `filePath` is that file's full path.
+3. After an interruption: `POST /api/file/getUploadedFolderStatus` with `{ uploadKey }` → `List<{ uploadFilePath, status, size }>` (0 pending / 1 in progress, `size` = bytes on disk / 2 done, `size = -1`). Resume that file from `size`.
+4. After each file: `POST /api/file/closeOneUpload` `{ uploadKey, filePath }`.
+5. After all files: `POST /api/file/closeUploadFolder` `{ uploadKey }`.
+
+Frontend assumptions pending backend confirmation: files of one folder upload sequentially; the folder session is closed only after every file is completed or canceled; a clashing top-level folder is renamed to `name(1)` before registering; empty folders are not registered.
 
 *get_download_file_size*　GET `/api/file/getDownloadFileSize?path=`
 VO: `Result<Long>`

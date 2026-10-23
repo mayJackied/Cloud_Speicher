@@ -37,11 +37,18 @@ describe('前端安全回归', () => {
     expect(queueUploads.indexOf('isLegalFileName(finalName)')).toBeLessThan(
       queueUploads.indexOf('transfers.enqueueUpload'),
     )
-    // 文件夹上传的相对目录段也要逐段净化后才能拼进服务端路径
-    expect(queueUploads).toContain('sanitizePathSegments(item.dirSegments')
-    expect(queueUploads.indexOf('sanitizePathSegments(item.dirSegments')).toBeLessThan(
-      queueUploads.indexOf('transfers.enqueueUpload'),
+  })
+
+  it('文件夹上传在登记前逐段净化相对目录与文件名', () => {
+    const drive = source('./views/drive/CloudDrive.vue')
+    const queueFolder = drive.slice(
+      drive.indexOf('async function queueFolderUpload'),
+      drive.indexOf('async function queueUploads'),
     )
+    const enqueue = queueFolder.indexOf('transfers.enqueueFolderUpload')
+    expect(enqueue).toBeGreaterThan(0)
+    expect(queueFolder.indexOf('sanitizePathSegments(item.dirSegments)')).toBeLessThan(enqueue)
+    expect(queueFolder.indexOf('isLegalFileName(decodeFileName(item.file.name))')).toBeLessThan(enqueue)
   })
 
   it('开发代理不再扩大文件系统范围或硬编码公网地址', () => {

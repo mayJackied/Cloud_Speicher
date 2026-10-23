@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { planFolderUpload } from './folderUpload'
+import { avoidTopFolderClash, planFolderUpload } from './folderUpload'
 
 function fileAt(rel: string): File {
   const name = rel.split('/').pop() ?? rel
@@ -28,6 +28,13 @@ describe('planFolderUpload', () => {
     ])
     expect(plan.skipped).toBe(2)
     expect(plan.items).toHaveLength(1)
+  })
+
+  it('renames a clashing top folder for the whole subtree', () => {
+    const plan = planFolderUpload([fileAt('docs/a/b.txt'), fileAt('docs/c.txt')])
+    const placed = avoidTopFolderClash(plan.items, ['docs', 'docs(1)'])
+    expect(placed.map((item) => item.dirSegments)).toEqual([['docs(2)', 'a'], ['docs(2)']])
+    expect(avoidTopFolderClash(plan.items, ['other'])[0]?.dirSegments).toEqual(['docs', 'a'])
   })
 
   it('falls back to the bare name without a relative path', () => {

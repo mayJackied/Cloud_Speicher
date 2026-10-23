@@ -13,6 +13,10 @@ const transferApi = vi.hoisted(() => ({
   pushUploadChunk: vi.fn(),
   finishUpload: vi.fn(),
   downloadContinuableWithProgress: vi.fn(),
+  allocateFolderUploadKey: vi.fn(),
+  probeFolderFile: vi.fn(),
+  finishFolderFile: vi.fn(),
+  finishFolderUpload: vi.fn(),
 }))
 
 vi.mock('@/api/transfers', () => transferApi)
@@ -51,6 +55,113 @@ describe('断点传输状态', () => {
     transferApi.pushUploadChunk.mockReset()
     transferApi.finishUpload.mockReset()
     transferApi.downloadContinuableWithProgress.mockReset()
+    transferApi.allocateFolderUploadKey.mockReset()
+    transferApi.probeFolderFile.mockReset()
+    transferApi.finishFolderFile.mockReset()
+    transferApi.finishFolderUpload.mockReset()
+  })
+
+  function goOnline() {
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => (key === 'apiMode' ? 'online' : null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+    })
+  }
+
+  it('文件夹上传：一次登记目录与文件，组内逐个上传并逐个关闭，最后关闭整个会话', async () => {
+    goOnline()
+    transferApi.allocateFolderUploadKey.mockResolvedValue({ ok: true, uploadKey: 'fk' })
+    const order: string[] = []
+    let inflight = 0
+    let maxInflight = 0
+    transferApi.pushUploadChunk.mockImplementation(
+      async ({ file, filePath }: { file: File; filePath: string }) => {
+        order.push(filePath)
+        inflight += 1
+        maxInflight = Math.max(maxInflight, inflight)
+        await new Promise((resolve) => setTimeout(resolve, 10))
+        inflight -= 1
+        return { ok: true, nextOffset: file.size }
+      },
+    )
+    transferApi.finishFolderFile.mockResolvedValue({ data: { code: 1, data: null } })
+    transferApi.finishFolderUpload.mockResolvedValue({ data: { code: 1, data: null } })
+
+    const store = useTransferStore()
+    const queued = await store.enqueueFolderUpload({
+      baseDir: './files/1',
+      items: [
+        { file: new File(['aa'], 'a.txt'), dirSegments: ['docs', 'sub'] },
+        { file: new File(['b'], 'b.txt'), dirSegments: ['docs'] },
+      ],
+    })
+    expect(queued.ok).toBe(true)
+    expect(transferApi.allocateFolderUploadKey).toHaveBeenCalledWith([
+      { is_file: false, uploadFilePath: './files/1/docs' },
+      { is_file: false, uploadFilePath: './files/1/docs/sub' },
+      { is_file: true, uploadFilePath: './files/1/docs/sub/a.txt' },
+      { is_file: true, uploadFilePath: './files/1/docs/b.txt' },
+    ])
+    await vi.runAllTimersAsync()
+
+    // 同一时刻组内只跑一个
+    expect(maxInflight).toBe(1)
+
+    expect(order).toEqual(['./files/1/docs/sub/a.txt', './files/1/docs/b.txt'])
+    expect(transferApi.pushUploadChunk.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({ uploadKey: 'fk', mode: 'folder', offset: 0 }),
+    )
+    expect(transferApi.finishFolderFile).toHaveBeenCalledTimes(2)
+    expect(transferApi.finishFolderUpload).toHaveBeenCalledTimes(1)
+    expect(transferApi.finishFolderUpload).toHaveBeenCalledWith('fk')
+    expect(transferApi.probeFolderFile).not.toHaveBeenCalled()
+    expect(store.tasks.every((task) => task.status === 'completed')).toBe(true)
+  })
+
+  it('文件夹登记失败时不建任务', async () => {
+    goOnline()
+    transferApi.allocateFolderUploadKey.mockResolvedValue({ ok: false, result: { code: 20001, data: null } })
+    const store = useTransferStore()
+    const queued = await store.enqueueFolderUpload({
+      baseDir: './files/1',
+      items: [{ file: new File(['a'], 'a.txt'), dirSegments: ['docs'] }],
+    })
+    expect(queued).toEqual({ ok: false, code: 20001 })
+    expect(store.tasks).toHaveLength(0)
+  })
+
+  it('文件夹任务续传前按 getUploadedFolderStatus 跳过已落盘字节', async () => {
+    goOnline()
+    transferApi.allocateFolderUploadKey.mockResolvedValue({ ok: true, uploadKey: 'fk' })
+    let calls = 0
+    transferApi.pushUploadChunk.mockImplementation(async ({ file }: { file: File }) => {
+      calls += 1
+      if (calls === 1) {
+        return { ok: false, result: { code: 99999, data: null }, nextOffset: 0 }
+      }
+      return { ok: true, nextOffset: file.size }
+    })
+    transferApi.probeFolderFile.mockResolvedValue({ ok: true, done: false, nextOffset: 4 })
+    transferApi.finishFolderFile.mockResolvedValue({ data: { code: 1, data: null } })
+    transferApi.finishFolderUpload.mockResolvedValue({ data: { code: 1, data: null } })
+
+    const store = useTransferStore()
+    await store.enqueueFolderUpload({
+      baseDir: './files/1',
+      items: [{ file: new File(['0123456789'], 'a.txt'), dirSegments: ['docs'] }],
+    })
+    await vi.runAllTimersAsync()
+    const id = store.tasks[0]!.id
+    expect(store.tasks[0]?.status).toBe('failed')
+    expect(transferApi.finishFolderUpload).not.toHaveBeenCalled()
+
+    store.retry(id)
+    await vi.runAllTimersAsync()
+    expect(transferApi.probeFolderFile).toHaveBeenCalledWith('fk', './files/1/docs/a.txt')
+    expect(transferApi.pushUploadChunk.mock.calls[1]?.[0]).toEqual(expect.objectContaining({ offset: 4 }))
+    expect(store.tasks[0]?.status).toBe('completed')
+    expect(transferApi.finishFolderUpload).toHaveBeenCalledWith('fk')
   })
 
   afterEach(() => {
