@@ -137,7 +137,7 @@ public class FileController {
         return fileService.initUploadFolder(initUploadFolderDTOS);
     }
     @PostMapping("/uploadFolder")
-    public Result<Void> uploadFolder(@RequestBody ContinuableUploadDTO continuableUploadDTO, HttpServletRequest request){
+    public Result<Void> uploadFolder(@ModelAttribute ContinuableUploadDTO continuableUploadDTO, HttpServletRequest request){
         return fileService.uploadFolder(continuableUploadDTO,request);
     }
     @PostMapping("/getUploadedFolderStatus")

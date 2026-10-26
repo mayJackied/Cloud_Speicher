@@ -328,15 +328,19 @@ public class FileServiceImpl implements FileService {
 
     @Override
     public Result<String> initUploadFolder(List<InitUploadFolderDTO> initUploadFolderDTOS) {
-        for (InitUploadFolderDTO initUploadFolderDTO : initUploadFolderDTOS) {
+/*        for (InitUploadFolderDTO initUploadFolderDTO : initUploadFolderDTOS) {
             Integer errorCode = checkFilePermission(initUploadFolderDTO.getUploadFilePath(), OTHER, CommonProperties.COMMON_PATH_OPERATION);
             if (errorCode != null) {
                 return Result.error(errorCode);
             }
-        }
+        }*/
         String uuid = UUID.randomUUID().toString();
         List<UploadFolder> content = new ArrayList<>();
-        BeanUtils.copyProperties(initUploadFolderDTOS, content);
+        for (InitUploadFolderDTO dto : initUploadFolderDTOS) {
+            UploadFolder uploadFolder = new UploadFolder();
+            BeanUtils.copyProperties(dto, uploadFolder);
+            content.add(uploadFolder);
+        }
         try {
             uploadFoldersMapper.insert(new UploadFolders(uuid, objectMapper.writeValueAsString(content)));
 
